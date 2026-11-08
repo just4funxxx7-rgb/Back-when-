@@ -1,0 +1,6 @@
+{
+  "name": "Aetheria: Outcast Lands - 3D Open World Survival",
+  "description": "An immersive 3D open-world post-apocalyptic survival RPG featuring realistic physics, dynamic weather, deep crafting, base building, mature moral choices, and adaptive AI NPC relationships.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
