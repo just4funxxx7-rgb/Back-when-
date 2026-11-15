@@ -39,8 +39,19 @@ if (process.env.GEMINI_API_KEY) {
   });
 }
 
-// In-memory cloud save fallback for unauthenticated sessions
+// In-memory cloud save & account fallback store
 const cloudSaves: Record<string, any> = {};
+const registeredAccounts: Record<
+  string,
+  {
+    uid: string;
+    email: string;
+    displayName: string;
+    passwordHash: string;
+    role: 'admin' | 'survivor';
+    createdAt: string;
+  }
+> = {};
 
 // Health check
 app.get('/api/health', (_req: Request, res: Response) => {
@@ -48,12 +59,135 @@ app.get('/api/health', (_req: Request, res: Response) => {
     status: 'ok',
     game: 'Aetheria: Outcast Lands',
     unifiedProjectName: 'Aetheria: Outcast Lands',
+    creator: 'Tyler Suggett',
     projectId: 'agile-gear-q3rp2',
     region: 'us-east1',
     geminiActive: !!ai,
     cloudSqlConfigured: !!process.env.SQL_HOST,
     timestamp: Date.now(),
   });
+});
+
+// ==========================================
+// USER ACCOUNT SIGN UP & LOGIN API (CLOUD SQL + SESSION)
+// ==========================================
+app.post('/api/auth/signup', async (req: Request, res: Response) => {
+  try {
+    const rawEmail = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    const displayName =
+      String(req.body?.displayName || '').trim() ||
+      rawEmail.split('@')[0] ||
+      'Outcast Survivor';
+
+    if (!rawEmail || !rawEmail.includes('@')) {
+      return res.status(400).json({ error: 'Please enter a valid email address.' });
+    }
+    if (password.length < 6) {
+      return res
+        .status(400)
+        .json({ error: 'Password must be at least 6 characters.' });
+    }
+
+    const uid =
+      req.body?.uid ||
+      `usr_${Buffer.from(rawEmail).toString('base64url').slice(0, 20)}`;
+    const role: 'admin' | 'survivor' = isEmailAdmin(rawEmail)
+      ? 'admin'
+      : 'survivor';
+
+    registeredAccounts[rawEmail] = {
+      uid,
+      email: rawEmail,
+      displayName,
+      passwordHash: Buffer.from(password).toString('base64'),
+      role,
+      createdAt: new Date().toISOString(),
+    };
+
+    try {
+      await getOrCreateUser(uid, rawEmail, displayName);
+    } catch {
+      // Non-fatal if Cloud SQL is warming up
+    }
+
+    return res.json({
+      success: true,
+      user: {
+        uid,
+        email: rawEmail,
+        displayName,
+        role,
+        authProvider: 'email',
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      error: err instanceof Error ? err.message : 'Account registration failed.',
+    });
+  }
+});
+
+app.post('/api/auth/login', async (req: Request, res: Response) => {
+  try {
+    const rawEmail = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+
+    if (!rawEmail || !password) {
+      return res
+        .status(400)
+        .json({ error: 'Email and password are required.' });
+    }
+
+    const existing = registeredAccounts[rawEmail];
+    const encodedPwd = Buffer.from(password).toString('base64');
+    if (existing && existing.passwordHash !== encodedPwd) {
+      return res
+        .status(401)
+        .json({ error: 'Invalid password for this survivor account.' });
+    }
+
+    const uid =
+      existing?.uid ||
+      `usr_${Buffer.from(rawEmail).toString('base64url').slice(0, 20)}`;
+    const displayName =
+      existing?.displayName || rawEmail.split('@')[0] || 'Outcast Survivor';
+    const role: 'admin' | 'survivor' = isEmailAdmin(rawEmail)
+      ? 'admin'
+      : existing?.role || 'survivor';
+
+    if (!existing) {
+      registeredAccounts[rawEmail] = {
+        uid,
+        email: rawEmail,
+        displayName,
+        passwordHash: encodedPwd,
+        role,
+        createdAt: new Date().toISOString(),
+      };
+    }
+
+    try {
+      await getOrCreateUser(uid, rawEmail, displayName);
+    } catch {
+      // Non-fatal
+    }
+
+    return res.json({
+      success: true,
+      user: {
+        uid,
+        email: rawEmail,
+        displayName,
+        role,
+        authProvider: 'email',
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      error: err instanceof Error ? err.message : 'Sign-in failed.',
+    });
+  }
 });
 
 // ==========================================

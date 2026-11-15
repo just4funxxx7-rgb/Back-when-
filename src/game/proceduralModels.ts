@@ -824,7 +824,20 @@ export function createPlayerModel(): PlayerModelParts {
   };
 }
 
-// 5. 8K High-Tessellation Anatomical NPCs (Elena, Commander Drake, Vesper)
+export interface NPCModelParts {
+  root: THREE.Group;
+  pelvisGroup: THREE.Group;
+  spineGroup: THREE.Group;
+  headGroup: THREE.Group;
+  leftArm: THREE.Group;
+  rightArm: THREE.Group;
+  leftLeg: THREE.Group;
+  rightLeg: THREE.Group;
+  marker: THREE.Mesh;
+}
+
+// 5. 8K High-Tessellation Articulated Anatomical NPCs (Elena, Commander Drake, Vesper)
+// Supports dynamic head-tracking, companion walking gait, gestures & Ragdoll Physics!
 export function createNPCModel(npcId: string): THREE.Group {
   const npc = new THREE.Group();
 
@@ -841,87 +854,150 @@ export function createNPCModel(npcId: string): THREE.Group {
     accentColor = 0xa855f7; // Vesper violet
   }
 
-  // Anatomical Legs & Boots
-  for (const lx of [-0.11, 0.11]) {
+  // Articulated Pelvis Group at hip height y = 0.94
+  const pelvisGroup = new THREE.Group();
+  pelvisGroup.position.y = 0.94;
+  npc.add(pelvisGroup);
+
+  const pelvis = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.21, 0.19, 0.26, 24),
+    coatMat
+  );
+  pelvis.position.y = 0.02;
+  pelvisGroup.add(pelvis);
+
+  const waistBridge = new THREE.Mesh(
+    new THREE.SphereGeometry(0.2, 20, 14),
+    coatMat
+  );
+  waistBridge.position.set(0, 0.1, 0);
+  pelvisGroup.add(waistBridge);
+
+  const belt = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.22, 0.22, 0.08, 24),
+    gameMaterials.trenchCoatLeather
+  );
+  belt.position.y = 0.06;
+  pelvisGroup.add(belt);
+
+  // Articulated Left & Right Legs attached to Pelvis
+  const leftLeg = new THREE.Group();
+  leftLeg.position.set(-0.11, -0.02, 0);
+  pelvisGroup.add(leftLeg);
+
+  const rightLeg = new THREE.Group();
+  rightLeg.position.set(0.11, -0.02, 0);
+  pelvisGroup.add(rightLeg);
+
+  for (const legGroup of [leftLeg, rightLeg]) {
     const thigh = new THREE.Mesh(
       new THREE.CylinderGeometry(0.098, 0.078, 0.48, 20),
       gameMaterials.tacticalCamoVest
     );
-    thigh.position.set(lx, 0.7, 0);
-    npc.add(thigh);
+    thigh.position.set(0, -0.24, 0);
+    legGroup.add(thigh);
 
     const calf = new THREE.Mesh(
       new THREE.CylinderGeometry(0.078, 0.064, 0.44, 20),
       gameMaterials.trenchCoatLeather
     );
-    calf.position.set(lx, 0.28, 0);
-    npc.add(calf);
+    calf.position.set(0, -0.66, 0);
+    legGroup.add(calf);
 
     const boot = new THREE.Mesh(
       new THREE.BoxGeometry(0.13, 0.14, 0.25),
       gameMaterials.combatBootRubber
     );
-    boot.position.set(lx, 0.07, 0.04);
-    npc.add(boot);
+    boot.position.set(0, -0.86, 0.04);
+    legGroup.add(boot);
   }
 
-  // Seamless Pelvis, Waist & Sculpted Torso
-  const pelvis = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.21, 0.19, 0.26, 24),
-    coatMat
-  );
-  pelvis.position.y = 0.96;
-  npc.add(pelvis);
+  // Articulated Spine & Torso Group
+  const spineGroup = new THREE.Group();
+  spineGroup.position.set(0, 0.08, 0);
+  pelvisGroup.add(spineGroup);
 
   const torso = new THREE.Mesh(
     new THREE.CylinderGeometry(0.255, 0.205, 0.62, 24),
     coatMat
   );
-  torso.position.y = 1.36;
+  torso.position.y = 0.34;
   torso.scale.set(1.02, 1.0, 0.85);
-  npc.add(torso);
+  spineGroup.add(torso);
 
-  // Belt & Brass Buckle
-  const belt = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.22, 0.22, 0.08, 24),
-    gameMaterials.trenchCoatLeather
-  );
-  belt.position.y = 1.04;
-  npc.add(belt);
+  // Articulated Arms & Hands attached to Spine
+  const leftArm = new THREE.Group();
+  leftArm.position.set(-0.31, 0.56, 0);
+  spineGroup.add(leftArm);
 
-  // Arms & Hands
-  for (const ax of [-0.31, 0.31]) {
+  const rightArm = new THREE.Group();
+  rightArm.position.set(0.31, 0.56, 0);
+  spineGroup.add(rightArm);
+
+  for (const [idx, armGroup] of [leftArm, rightArm].entries()) {
+    const isRight = idx === 1;
     const arm = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.072, 0.056, 0.62, 18),
+      new THREE.CylinderGeometry(0.072, 0.056, 0.6, 18),
       coatMat
     );
-    arm.position.set(ax, 1.32, 0);
-    arm.rotation.z = ax > 0 ? -0.08 : 0.08;
-    npc.add(arm);
+    arm.position.set(0, -0.28, 0);
+    arm.rotation.z = isRight ? -0.06 : 0.06;
+    armGroup.add(arm);
 
     const hand = new THREE.Mesh(
       new THREE.SphereGeometry(0.052, 14, 14),
       gameMaterials.photorealSkin
     );
-    hand.position.set(ax * 1.08, 0.98, 0);
-    npc.add(hand);
+    hand.position.set(isRight ? 0.02 : -0.02, -0.6, 0);
+    armGroup.add(hand);
   }
 
-  // Neck & Sculpted 8K Head with Eyes, Lips & Hair
+  // Character-Specific Signature Gear on Spine
+  if (npcId === 'elena') {
+    const cloak = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.24, 0.36, 0.95, 20, 1, true, Math.PI * 0.5, Math.PI),
+      new THREE.MeshPhysicalMaterial({ color: accentColor, roughness: 0.65, side: THREE.DoubleSide })
+    );
+    cloak.position.set(0, 0.2, -0.04);
+    spineGroup.add(cloak);
+  } else if (npcId === 'drake') {
+    for (const s of [-0.33, 0.33]) {
+      const pauldron = new THREE.Mesh(
+        new THREE.SphereGeometry(0.14, 16, 14),
+        gameMaterials.refinedSteel
+      );
+      pauldron.position.set(s, 0.6, 0);
+      spineGroup.add(pauldron);
+    }
+  } else {
+    const scarf = new THREE.Mesh(
+      new THREE.TorusGeometry(0.16, 0.055, 12, 24),
+      new THREE.MeshPhysicalMaterial({ color: accentColor, roughness: 0.55 })
+    );
+    scarf.position.set(0, 0.68, 0);
+    scarf.rotation.x = Math.PI / 2;
+    spineGroup.add(scarf);
+  }
+
+  // Articulated Neck & Sculpted 8K Head Group
+  const headGroup = new THREE.Group();
+  headGroup.position.set(0, 0.66, 0);
+  spineGroup.add(headGroup);
+
   const neck = new THREE.Mesh(
     new THREE.CylinderGeometry(0.078, 0.09, 0.15, 18),
     gameMaterials.photorealSkin
   );
-  neck.position.y = 1.72;
-  npc.add(neck);
+  neck.position.y = 0.05;
+  headGroup.add(neck);
 
   const head = new THREE.Mesh(
     new THREE.SphereGeometry(0.165, 28, 28),
     gameMaterials.photorealSkin
   );
-  head.position.y = 1.92;
+  head.position.y = 0.24;
   head.scale.set(0.94, 1.12, 1.02);
-  npc.add(head);
+  headGroup.add(head);
 
   // Eyes & Lips
   for (const ex of [-0.054, 0.054]) {
@@ -929,15 +1005,15 @@ export function createNPCModel(npcId: string): THREE.Group {
       new THREE.SphereGeometry(0.025, 14, 14),
       gameMaterials.eyeWhite
     );
-    eye.position.set(ex, 1.93, 0.145);
-    npc.add(eye);
+    eye.position.set(ex, 0.25, 0.145);
+    headGroup.add(eye);
 
     const pupil = new THREE.Mesh(
       new THREE.CircleGeometry(0.011, 12),
       gameMaterials.eyeIris
     );
-    pupil.position.set(ex, 1.93, 0.169);
-    npc.add(pupil);
+    pupil.position.set(ex, 0.25, 0.169);
+    headGroup.add(pupil);
   }
 
   const lips = new THREE.Mesh(
@@ -945,43 +1021,16 @@ export function createNPCModel(npcId: string): THREE.Group {
     gameMaterials.lipSkin
   );
   lips.rotation.z = Math.PI / 2;
-  lips.position.set(0, 1.84, 0.155);
-  npc.add(lips);
+  lips.position.set(0, 0.16, 0.155);
+  headGroup.add(lips);
 
   const hair = new THREE.Mesh(
     new THREE.SphereGeometry(0.174, 24, 24),
     hairMat
   );
-  hair.position.set(0, 1.96, -0.02);
+  hair.position.set(0, 0.28, -0.02);
   hair.scale.set(1.03, 1.05, 1.1);
-  npc.add(hair);
-
-  // Character-Specific Signature Gear
-  if (npcId === 'elena') {
-    const cloak = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.24, 0.36, 0.95, 20, 1, true, Math.PI * 0.5, Math.PI),
-      new THREE.MeshPhysicalMaterial({ color: accentColor, roughness: 0.65, side: THREE.DoubleSide })
-    );
-    cloak.position.set(0, 1.22, -0.04);
-    npc.add(cloak);
-  } else if (npcId === 'drake') {
-    for (const s of [-0.34, 0.34]) {
-      const pauldron = new THREE.Mesh(
-        new THREE.SphereGeometry(0.14, 16, 14),
-        gameMaterials.refinedSteel
-      );
-      pauldron.position.set(s, 1.62, 0);
-      npc.add(pauldron);
-    }
-  } else {
-    const scarf = new THREE.Mesh(
-      new THREE.TorusGeometry(0.16, 0.055, 12, 24),
-      new THREE.MeshPhysicalMaterial({ color: accentColor, roughness: 0.55 })
-    );
-    scarf.position.set(0, 1.72, 0);
-    scarf.rotation.x = Math.PI / 2;
-    npc.add(scarf);
-  }
+  headGroup.add(hair);
 
   // Floating Companion Status Diamond
   const markerGeo = new THREE.OctahedronGeometry(0.11, 0);
@@ -990,8 +1039,127 @@ export function createNPCModel(npcId: string): THREE.Group {
   marker.position.y = 2.38;
   npc.add(marker);
 
+  const parts: NPCModelParts = {
+    root: npc,
+    pelvisGroup,
+    spineGroup,
+    headGroup,
+    leftArm,
+    rightArm,
+    leftLeg,
+    rightLeg,
+    marker,
+  };
+  npc.userData.parts = parts;
+
   setupGroupShadows(npc, true, true);
   return npc;
+}
+
+// 5B. Flying Physical Debris Fragment Mesh (Spawned during Structure Destruction)
+export function createDebrisChunkMesh(
+  materialType: 'wood' | 'stone' | 'iron' = 'wood'
+): THREE.Mesh {
+  if (materialType === 'wood') {
+    const plankGeo = new THREE.BoxGeometry(
+      0.16 + Math.random() * 0.14,
+      0.08 + Math.random() * 0.06,
+      0.55 + Math.random() * 0.45
+    );
+    const mesh = new THREE.Mesh(
+      plankGeo,
+      Math.random() > 0.4 ? gameMaterials.woodPlanks : gameMaterials.woodBark
+    );
+    mesh.castShadow = !isSoftwareGl;
+    return mesh;
+  } else if (materialType === 'iron') {
+    const strapGeo = new THREE.BoxGeometry(0.1, 0.04, 0.48);
+    const mesh = new THREE.Mesh(strapGeo, gameMaterials.ironBand);
+    mesh.castShadow = !isSoftwareGl;
+    return mesh;
+  } else {
+    const chunkGeo = new THREE.DodecahedronGeometry(
+      0.16 + Math.random() * 0.14,
+      0
+    );
+    const mesh = new THREE.Mesh(chunkGeo, gameMaterials.granite);
+    mesh.castShadow = !isSoftwareGl;
+    return mesh;
+  }
+}
+
+// 5C. Persistent 3D Rubble Pile Mesh (Remains in the World when Base Structures Collapse)
+export function createRubblePileMesh(
+  originalType: PlacedStructure['type']
+): THREE.Group {
+  const group = new THREE.Group();
+
+  // 1. Base Earth & Ash Rubble Mound
+  const moundGeo = new THREE.ConeGeometry(1.45, 0.48, 12);
+  const mound = new THREE.Mesh(moundGeo, gameMaterials.firePitStones);
+  mound.position.y = 0.2;
+  mound.scale.set(1.15, 1.0, 1.05);
+  group.add(mound);
+
+  // 2. Fractured Granite & Slate Stones scattered across the ruins
+  for (let i = 0; i < 9; i++) {
+    const angle = (i * Math.PI * 2) / 9 + (i % 2) * 0.25;
+    const dist = 0.35 + (i % 3) * 0.34;
+    const rStone = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(0.18 + (i % 3) * 0.06, 0),
+      i % 2 === 0 ? gameMaterials.granite : gameMaterials.firePitStones
+    );
+    rStone.position.set(
+      Math.cos(angle) * dist,
+      0.14 + (i % 2) * 0.08,
+      Math.sin(angle) * dist
+    );
+    rStone.rotation.set(i * 0.7, i * 1.1, i * 0.4);
+    group.add(rStone);
+  }
+
+  // 3. Splintered Timber Beams & Collapsed Planks
+  const beamCount = originalType === 'watchtower' ? 9 : 6;
+  for (let i = 0; i < beamCount; i++) {
+    const angle = (i * Math.PI * 2) / beamCount + 0.2;
+    const plank = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 0.1, 1.15 + (i % 2) * 0.35),
+      i % 2 === 0 ? gameMaterials.woodBark : gameMaterials.woodPlanks
+    );
+    plank.position.set(
+      Math.cos(angle) * 0.52,
+      0.24 + (i % 3) * 0.09,
+      Math.sin(angle) * 0.52
+    );
+    plank.rotation.set(
+      0.25 + (i % 2) * 0.22,
+      angle + 0.5,
+      (i % 2 === 0 ? 1 : -1) * 0.18
+    );
+    group.add(plank);
+  }
+
+  // 4. Twisted Iron Bands & Rebar Brackets
+  for (let i = 0; i < 3; i++) {
+    const rebar = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.025, 0.025, 0.85, 8),
+      gameMaterials.ironBand
+    );
+    rebar.position.set((i - 1) * 0.42, 0.38, (i % 2 === 0 ? 1 : -1) * 0.25);
+    rebar.rotation.set(0.45 * i, 0.8 * i, -0.35 + i * 0.3);
+    group.add(rebar);
+  }
+
+  // 5. Smoldering Salvage Core Marker
+  const emberCore = new THREE.Mesh(
+    new THREE.SphereGeometry(0.16, 10, 10),
+    gameMaterials.emberGlow
+  );
+  emberCore.position.set(0, 0.36, 0);
+  group.add(emberCore);
+
+  setupGroupShadows(group, true, true);
+  return group;
 }
 
 // 6. Procedural Base Building Pieces

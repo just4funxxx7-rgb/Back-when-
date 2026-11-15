@@ -3,6 +3,9 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile,
   signOut,
   onAuthStateChanged,
   User,
@@ -20,14 +23,16 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
+import { UserAccountProfile } from '../types/game';
 
 // Initialize Firebase SDK
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 
-// Unified project name across platforms
+// Unified project name & Creator across platforms
 export const UNIFIED_PROJECT_NAME = 'Aetheria: Outcast Lands';
+export const CREATOR_NAME = 'Tyler Suggett';
 export const ADMIN_EMAILS = [
   'new.dawn.industries2026@gmail.com',
   'just4funxxx7@gmail.com',
@@ -154,6 +159,72 @@ export const googleSignIn = async () => {
   const credential = GoogleAuthProvider.credentialFromResult(result);
   cachedAccessToken = credential?.accessToken ?? null;
   return result.user;
+};
+
+export const emailSignUp = async (
+  email: string,
+  password: string,
+  displayName: string
+): Promise<UserAccountProfile> => {
+  // 1. Register in Cloud SQL backend
+  const res = await fetch('/api/auth/signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, displayName }),
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || 'Could not create account');
+  }
+
+  // 2. Also attempt Firebase Email/Password creation if enabled in Firebase Console
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    if (displayName) {
+      await updateProfile(cred.user, { displayName });
+    }
+    return {
+      uid: cred.user.uid,
+      email: cred.user.email || email,
+      displayName: displayName || cred.user.displayName || 'Outcast Survivor',
+      role: isClientAdminEmail(email) ? 'admin' : 'survivor',
+      authProvider: 'email',
+    };
+  } catch {
+    // Return Cloud SQL verified account profile
+    return json.user as UserAccountProfile;
+  }
+};
+
+export const emailSignIn = async (
+  email: string,
+  password: string
+): Promise<UserAccountProfile> => {
+  // 1. Verify against Cloud SQL backend
+  const res = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || 'Invalid email or password');
+  }
+
+  // 2. Also attempt Firebase Email/Password sign-in if enabled
+  try {
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    return {
+      uid: cred.user.uid,
+      email: cred.user.email || email,
+      displayName:
+        cred.user.displayName || json.user?.displayName || 'Outcast Survivor',
+      role: isClientAdminEmail(email) ? 'admin' : 'survivor',
+      authProvider: 'email',
+    };
+  } catch {
+    return json.user as UserAccountProfile;
+  }
 };
 
 export const getAccessToken = async (): Promise<string> => {

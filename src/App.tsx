@@ -9,6 +9,8 @@ import { BottomDock } from './components/BottomDock';
 import { DialogueModal } from './components/DialogueModal';
 import { TitleScreen } from './components/TitleScreen';
 import { MobileControls } from './components/MobileControls';
+import { AuthModal } from './components/AuthModal';
+import { CreditsModal } from './components/CreditsModal';
 import { audioEngine } from './game/audioEngine';
 import {
   PlayerVitals,
@@ -22,6 +24,8 @@ import {
   SurveyBeacon,
   Mission,
   MapWaypoint,
+  UserAccountProfile,
+  RubblePile,
 } from './types/game';
 import { ITEM_CATALOG, INITIAL_NPCS } from './game/itemsData';
 import {
@@ -41,8 +45,11 @@ import {
   testFirestoreConnection,
   syncSurvivorToFirestore,
   loadSurvivorFromFirestore,
+  CREATOR_NAME,
+  isClientAdminEmail,
 } from './lib/firebase';
 import type { User } from 'firebase/auth';
+import { Eye, EyeOff, Award, UserCheck, Flame, Zap } from 'lucide-react';
 
 export default function App() {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
@@ -52,6 +59,11 @@ export default function App() {
     DEFAULT_GRAPHICS_CONFIG
   );
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [accountProfile, setAccountProfile] =
+    useState<UserAccountProfile | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isCreditsModalOpen, setIsCreditsModalOpen] = useState(false);
+  const [isHudHidden, setIsHudHidden] = useState(false);
 
   const [gamePhase, setGamePhase] = useState<'title' | 'playing'>('title');
   const [isMuted, setIsMuted] = useState(false);
@@ -88,7 +100,7 @@ export default function App() {
   );
   const [moralKarma, setMoralKarma] = useState(15);
 
-  // Expanding World Map & Missions State
+  // Expanding World Map, Rubble & Missions State
   const [playerPos, setPlayerPos] = useState<{ x: number; z: number }>({
     x: 0,
     z: 0,
@@ -101,6 +113,7 @@ export default function App() {
     INITIAL_SURVEY_BEACONS
   );
   const [missions, setMissions] = useState<Mission[]>(INITIAL_MISSIONS);
+  const [rubblePiles, setRubblePiles] = useState<RubblePile[]>([]);
   const [activeWaypoint, setActiveWaypoint] = useState<MapWaypoint | null>({
     x: 3,
     z: 3,
@@ -127,10 +140,33 @@ export default function App() {
   };
 
   useEffect(() => {
+    try {
+      const savedAcc = localStorage.getItem('aetheria_account_profile');
+      if (savedAcc) {
+        setAccountProfile(JSON.parse(savedAcc));
+      }
+    } catch {
+      // Ignore
+    }
+
     testFirestoreConnection();
     const unsub = initAuth(async (user) => {
       setCurrentUser(user);
       if (user) {
+        const profile: UserAccountProfile = {
+          uid: user.uid,
+          email: user.email || '',
+          displayName:
+            user.displayName || user.email?.split('@')[0] || 'Outcast Survivor',
+          role: isClientAdminEmail(user.email) ? 'admin' : 'survivor',
+          authProvider: 'google',
+          createdAt: new Date().toISOString(),
+        };
+        setAccountProfile(profile);
+        localStorage.setItem(
+          'aetheria_account_profile',
+          JSON.stringify(profile)
+        );
         try {
           const idToken = await user.getIdToken();
           await fetch('/api/sql/sync-user', {
@@ -164,6 +200,9 @@ export default function App() {
         z: engine.playerGroup.position.z,
       });
       setPlayerAngle(engine.playerFacingAngle);
+      if (engine.rubblePiles.length !== rubblePiles.length) {
+        setRubblePiles([...engine.rubblePiles]);
+      }
       if (engine.weatherSystem) {
         setTimeOfDay(engine.weatherSystem.state.timeOfDay);
         setDayCount(engine.weatherSystem.state.dayCount);
@@ -174,6 +213,7 @@ export default function App() {
     engine.onInventoryUpdate = (newInv, newHotbar) => {
       setInventory(newInv);
       setHotbar(newHotbar);
+      setRubblePiles([...engine.rubblePiles]);
     };
 
     engine.onNPCInteract = (npc) => {
@@ -186,6 +226,7 @@ export default function App() {
 
     engine.onNotification = (text, icon = '🔔') => {
       notify(text, icon);
+      setRubblePiles([...engine.rubblePiles]);
     };
 
     engine.onMapAndMissionsUpdate = (
@@ -199,12 +240,19 @@ export default function App() {
       setSurveyBeacons(beacons);
       setMissions(updatedMissions);
       setActiveWaypoint(wp);
+      setRubblePiles([...engine.rubblePiles]);
     };
 
     setHotbar([...engine.hotbar]);
     setInventory([...engine.inventory]);
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        document.activeElement?.tagName === 'INPUT' ||
+        document.activeElement?.tagName === 'TEXTAREA'
+      ) {
+        return;
+      }
       if (e.code === 'Space' || e.code === 'Enter') {
         setGamePhase((prev) => {
           if (prev === 'title') {
@@ -215,6 +263,17 @@ export default function App() {
         });
       } else if (e.code === 'KeyM') {
         setIsWorldMapOpen((prev) => !prev);
+      } else if (e.code === 'KeyH') {
+        setIsHudHidden((prev) => {
+          const next = !prev;
+          notify(
+            next
+              ? 'Play Screen HUD Hidden (Press [H] to restore)'
+              : 'Play Screen HUD Restored',
+            next ? '👁️‍🗨️' : '👁️'
+          );
+          return next;
+        });
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -237,6 +296,8 @@ export default function App() {
   const handleGoogleSignOut = async () => {
     try {
       await logout();
+      setAccountProfile(null);
+      localStorage.removeItem('aetheria_account_profile');
       notify('Signed out of Aetheria Cloud', '👋');
     } catch {
       notify('Failed to sign out', '⚠️');
@@ -373,6 +434,7 @@ export default function App() {
       equippedArmor: { head: null, chest: null, legs: null, feet: null },
       activeWeapon: null,
       structures: [...engine.placedStructures],
+      rubblePiles: [...engine.rubblePiles],
       dayCount: engine.weatherSystem.state.dayCount,
       timeOfDay: engine.weatherSystem.state.timeOfDay,
       weather: engine.weatherSystem.state.currentWeather,
@@ -425,7 +487,7 @@ export default function App() {
           }),
         });
         engine.notify(
-          'Synced to Cloud SQL (PostgreSQL) & Firebase Firestore!',
+          'Synced Save & Persistent Rubble to Cloud SQL & Firestore!',
           '☁️'
         );
       } else {
@@ -485,10 +547,14 @@ export default function App() {
         if (save.exploredCells) {
           engine.exploredCells = new Set(save.exploredCells);
         }
+        if (save.rubblePiles) {
+          engine.restoreRubblePiles(save.rubblePiles);
+          setRubblePiles([...engine.rubblePiles]);
+        }
         setVitals({ ...save.vitals });
         setHotbar([...save.hotbar]);
         setInventory([...save.inventory]);
-        engine.notify('Loaded persistent save state!', '📂');
+        engine.notify('Loaded persistent save state & world rubble!', '📂');
       } else {
         engineRef.current?.notify('No previous save state found.', '⚠️');
       }
@@ -513,6 +579,10 @@ export default function App() {
         engineRef.current.vitals = parsed.vitals;
         engineRef.current.hotbar = parsed.hotbar;
         engineRef.current.inventory = parsed.inventory;
+        if (parsed.rubblePiles) {
+          engineRef.current.restoreRubblePiles(parsed.rubblePiles);
+          setRubblePiles([...engineRef.current.rubblePiles]);
+        }
         setVitals({ ...parsed.vitals });
         setHotbar([...parsed.hotbar]);
         setInventory([...parsed.inventory]);
@@ -576,10 +646,13 @@ export default function App() {
           onOpenSaves={handleLoadGame}
           onOpenGuide={() =>
             engineRef.current?.notify(
-              'WASD / Joystick Move · [M] Expanding World Map · [E] Activate Survey Spires',
+              'WASD Move · [K] Ragdoll · [X] Rubble Blast · [H] Hide Menus · Created by Tyler Suggett',
               '📖'
             )
           }
+          onOpenAuth={() => setIsAuthModalOpen(true)}
+          onOpenCredits={() => setIsCreditsModalOpen(true)}
+          accountProfile={accountProfile}
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
         />
@@ -588,44 +661,175 @@ export default function App() {
       {/* Active Playing In-Game HUD */}
       {gamePhase === 'playing' && (
         <>
-          {/* Top Bar: Left (Vitals + Active Mission Tracker) & Right (Weather + Live Radar Minimap) */}
-          <div className="absolute top-2 inset-x-2 sm:top-4 sm:inset-x-4 z-20 flex items-start justify-between gap-2 pointer-events-none">
-            <div className="flex flex-col gap-2 pointer-events-auto">
-              <VitalsHUD vitals={vitals} />
-              <MissionTrackerHUD
+          {/* Persistent Top-Center Play Screen Quick Control Pill (Always visible so player can Hide/Restore Menus, test Ragdoll/Rubble, or open Account/Credits) */}
+          <div className="fixed top-2 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-neutral-950/90 border border-neutral-800 shadow-2xl pointer-events-auto">
+            <button
+              onClick={() => setIsHudHidden(!isHudHidden)}
+              title="Toggle all play screen menus [H]"
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition ${
+                isHudHidden
+                  ? 'bg-amber-600 text-white'
+                  : 'bg-neutral-800/90 text-neutral-300 hover:text-white'
+              }`}
+            >
+              {isHudHidden ? (
+                <>
+                  <Eye className="w-3 h-3" />
+                  <span>Show Menus [H]</span>
+                </>
+              ) : (
+                <>
+                  <EyeOff className="w-3 h-3 text-amber-400" />
+                  <span>Hide Menus [H]</span>
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={() => engineRef.current?.triggerPlayerRagdoll()}
+              title="Trigger character ragdoll physics [K]"
+              className="hidden sm:flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-900 hover:bg-neutral-800 text-[10px] font-semibold text-amber-300 border border-neutral-800"
+            >
+              <Zap className="w-3 h-3 text-amber-400" />
+              <span>Ragdoll [K]</span>
+            </button>
+
+            <button
+              onClick={() => engineRef.current?.demolishNearestStructure()}
+              title="Demolish nearest structure into persistent 3D rubble [X]"
+              className="hidden sm:flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-900 hover:bg-neutral-800 text-[10px] font-semibold text-rose-300 border border-neutral-800"
+            >
+              <Flame className="w-3 h-3 text-rose-400" />
+              <span>Rubble Blast [X]</span>
+            </button>
+
+            <button
+              onClick={() => setIsAuthModalOpen(true)}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-900 hover:bg-neutral-800 text-[10px] font-semibold text-emerald-300 border border-neutral-800"
+            >
+              <UserCheck className="w-3 h-3 text-emerald-400" />
+              <span className="max-w-[90px] truncate">
+                {accountProfile ? accountProfile.displayName : 'Account'}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setIsCreditsModalOpen(true)}
+              title={`Created by ${CREATOR_NAME}`}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-950/60 hover:bg-amber-900/60 text-[10px] font-bold text-amber-300 border border-amber-500/40"
+            >
+              <Award className="w-3 h-3 text-amber-400" />
+              <span className="hidden md:inline">Creator: {CREATOR_NAME}</span>
+              <span className="md:hidden">Credits</span>
+            </button>
+          </div>
+
+          {/* Collapsible / Hideable Play Screen Menus */}
+          {!isHudHidden && (
+            <>
+              {/* Top Bar: Left (Vitals + Active Mission Tracker) & Right (Weather + Live Radar Minimap) */}
+              <div className="absolute top-10 inset-x-2 sm:top-11 sm:inset-x-4 z-20 flex items-start justify-between gap-2 pointer-events-none">
+                <div className="flex flex-col gap-2 pointer-events-auto">
+                  <VitalsHUD vitals={vitals} />
+                  <MissionTrackerHUD
+                    missions={missions}
+                    playerPos={playerPos}
+                    onTrackWaypoint={(wp) => engineRef.current?.setWaypoint(wp)}
+                    onRequestNewDirective={() =>
+                      engineRef.current?.generateNewDirectiveMission()
+                    }
+                  />
+                </div>
+
+                <div className="flex flex-col items-end gap-2 pointer-events-auto">
+                  <WeatherHUD
+                    timeOfDay={timeOfDay}
+                    dayCount={dayCount}
+                    currentWeather={currentWeather}
+                    onWeatherChange={handleWeatherChange}
+                    isCoopActive={isCoopActive}
+                    onToggleCoop={handleToggleCoop}
+                    isMuted={isMuted}
+                    onToggleMute={handleToggleMute}
+                  />
+                  <MinimapHUD
+                    playerPos={playerPos}
+                    playerAngle={playerAngle}
+                    sectors={worldSectors}
+                    beacons={surveyBeacons}
+                    npcs={npcs}
+                    structures={engineRef.current?.placedStructures || []}
+                    rubblePiles={rubblePiles}
+                    exploredCells={engineRef.current?.exploredCells || new Set()}
+                    activeWaypoint={activeWaypoint}
+                    onOpenWorldMap={() => setIsWorldMapOpen(true)}
+                  />
+                </div>
+              </div>
+
+              {/* Bottom Dock */}
+              <BottomDock
+                hotbar={hotbar}
+                inventory={inventory}
+                skills={
+                  engineRef.current?.skills || {
+                    foraging: 1,
+                    woodcraft: 1,
+                    mining: 1,
+                    combat: 1,
+                    engineering: 1,
+                    diplomacy: 1,
+                  }
+                }
+                vitals={vitals}
+                dayCount={dayCount}
+                moralKarma={moralKarma}
+                npcs={npcs}
                 missions={missions}
-                playerPos={playerPos}
                 onTrackWaypoint={(wp) => engineRef.current?.setWaypoint(wp)}
                 onRequestNewDirective={() =>
                   engineRef.current?.generateNewDirectiveMission()
                 }
-              />
-            </div>
-
-            <div className="flex flex-col items-end gap-2 pointer-events-auto">
-              <WeatherHUD
-                timeOfDay={timeOfDay}
-                dayCount={dayCount}
-                currentWeather={currentWeather}
-                onWeatherChange={handleWeatherChange}
-                isCoopActive={isCoopActive}
-                onToggleCoop={handleToggleCoop}
-                isMuted={isMuted}
-                onToggleMute={handleToggleMute}
-              />
-              <MinimapHUD
-                playerPos={playerPos}
-                playerAngle={playerAngle}
-                sectors={worldSectors}
-                beacons={surveyBeacons}
-                npcs={npcs}
-                structures={engineRef.current?.placedStructures || []}
-                exploredCells={engineRef.current?.exploredCells || new Set()}
-                activeWaypoint={activeWaypoint}
                 onOpenWorldMap={() => setIsWorldMapOpen(true)}
+                selectedHotbarIndex={selectedHotbarIndex}
+                onSelectHotbar={(idx) => {
+                  setSelectedHotbarIndex(idx);
+                  if (engineRef.current) engineRef.current.selectedHotbarSlot = idx;
+                }}
+                onUseItem={handleUseItem}
+                onCraftRecipe={handleCraftRecipe}
+                onStartPlacement={handleStartPlacement}
+                placementActive={placementActive}
+                onCancelPlacement={handleCancelPlacement}
+                onRotatePlacement={handleRotatePlacement}
+                onConfirmPlacement={handleConfirmPlacement}
+                onOpenNPCDialogue={(npc) => {
+                  engineRef.current?.recordMissionProgress('talk_npc', undefined, 1);
+                  setActiveDialogueNPC(npc);
+                }}
+                playerLevel={vitals.level}
+                playerXp={vitals.xp}
+                onSaveGame={handleSaveGame}
+                onLoadGame={handleLoadGame}
+                onExportSave={handleExportSave}
+                onImportSave={handleImportSave}
+                graphicsConfig={graphicsConfig}
+                onApplyGraphicsPreset={handleApplyGraphicsPreset}
+                onUpdateGraphicsConfig={handleUpdateGraphicsConfig}
+                currentUser={currentUser}
+                onGoogleSignIn={handleGoogleSignIn}
+                onGoogleSignOut={handleGoogleSignOut}
+                onNotify={notify}
+                onOpenAuth={() => setIsAuthModalOpen(true)}
+                onOpenCredits={() => setIsCreditsModalOpen(true)}
+                onTriggerRagdoll={() => engineRef.current?.triggerPlayerRagdoll()}
+                onDemolishToRubble={() =>
+                  engineRef.current?.demolishNearestStructure()
+                }
+                accountProfile={accountProfile}
               />
-            </div>
-          </div>
+            </>
+          )}
 
           {/* Center Reticle & In-World Interaction Hint */}
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
@@ -667,61 +871,6 @@ export default function App() {
             isSprinting={isSprinting}
           />
 
-          {/* Bottom Dock */}
-          <BottomDock
-            hotbar={hotbar}
-            inventory={inventory}
-            skills={
-              engineRef.current?.skills || {
-                foraging: 1,
-                woodcraft: 1,
-                mining: 1,
-                combat: 1,
-                engineering: 1,
-                diplomacy: 1,
-              }
-            }
-            vitals={vitals}
-            dayCount={dayCount}
-            moralKarma={moralKarma}
-            npcs={npcs}
-            missions={missions}
-            onTrackWaypoint={(wp) => engineRef.current?.setWaypoint(wp)}
-            onRequestNewDirective={() =>
-              engineRef.current?.generateNewDirectiveMission()
-            }
-            onOpenWorldMap={() => setIsWorldMapOpen(true)}
-            selectedHotbarIndex={selectedHotbarIndex}
-            onSelectHotbar={(idx) => {
-              setSelectedHotbarIndex(idx);
-              if (engineRef.current) engineRef.current.selectedHotbarSlot = idx;
-            }}
-            onUseItem={handleUseItem}
-            onCraftRecipe={handleCraftRecipe}
-            onStartPlacement={handleStartPlacement}
-            placementActive={placementActive}
-            onCancelPlacement={handleCancelPlacement}
-            onRotatePlacement={handleRotatePlacement}
-            onConfirmPlacement={handleConfirmPlacement}
-            onOpenNPCDialogue={(npc) => {
-              engineRef.current?.recordMissionProgress('talk_npc', undefined, 1);
-              setActiveDialogueNPC(npc);
-            }}
-            playerLevel={vitals.level}
-            playerXp={vitals.xp}
-            onSaveGame={handleSaveGame}
-            onLoadGame={handleLoadGame}
-            onExportSave={handleExportSave}
-            onImportSave={handleImportSave}
-            graphicsConfig={graphicsConfig}
-            onApplyGraphicsPreset={handleApplyGraphicsPreset}
-            onUpdateGraphicsConfig={handleUpdateGraphicsConfig}
-            currentUser={currentUser}
-            onGoogleSignIn={handleGoogleSignIn}
-            onGoogleSignOut={handleGoogleSignOut}
-            onNotify={notify}
-          />
-
           {/* Full-Screen Interactive World Map & Cartography Modal */}
           {isWorldMapOpen && (
             <WorldMapModal
@@ -744,12 +893,103 @@ export default function App() {
               onClose={() => setActiveDialogueNPC(null)}
               onUpdateNPC={(updated) => {
                 setNpcs((prev) => ({ ...prev, [updated.id]: updated }));
+                if (engineRef.current && engineRef.current.npcs[updated.id]) {
+                  Object.assign(engineRef.current.npcs[updated.id], updated);
+                }
                 setActiveDialogueNPC(updated);
               }}
               onKarmaChange={(delta) => setMoralKarma((k) => k + delta)}
+              onToggleFollow={(npcId, follow) => {
+                engineRef.current?.setNPCFollowing(npcId, follow);
+              }}
+              onGiveGift={() => {
+                if (!engineRef.current) return false;
+                const engine = engineRef.current;
+                const giftOptions = [
+                  'roasted_venison',
+                  'herbal_salve',
+                  'berries',
+                  'wood_log',
+                ];
+                for (const itemId of giftOptions) {
+                  const hasItem = [...engine.hotbar, ...engine.inventory].some(
+                    (i) => i && i.id === itemId && i.count > 0
+                  );
+                  if (hasItem) {
+                    engine.deductItem(itemId, 1);
+                    engine.addXP(25, 'diplomacy');
+                    engine.notify(
+                      `Gifted ${ITEM_CATALOG[itemId]?.name || itemId} (+12 Affinity)`,
+                      '🎁'
+                    );
+                    return true;
+                  }
+                }
+                engine.notify(
+                  'Need Berries, Venison, Herbal Salve, or Timber to gift!',
+                  '⚠️'
+                );
+                return false;
+              }}
+              onBarterTrade={() => {
+                if (!engineRef.current) return false;
+                const engine = engineRef.current;
+                const rewardMap: Record<string, string> = {
+                  lyra: 'herbal_salve',
+                  kaelen: 'iron_ingot',
+                  seraphina: 'roasted_venison',
+                };
+                const itemId = rewardMap[activeDialogueNPC.id] || 'herbal_salve';
+                engine.addInventoryItem(itemId, 2);
+                engine.addXP(20, 'diplomacy');
+                engine.notify(
+                  `Received 2x ${ITEM_CATALOG[itemId]?.name || itemId} from companion barter!`,
+                  '🤝'
+                );
+                return true;
+              }}
+              onIntimateBoostVitals={() => {
+                if (!engineRef.current) return;
+                const engine = engineRef.current;
+                engine.vitals.health = engine.vitals.maxHealth;
+                engine.vitals.stamina = engine.vitals.maxStamina;
+                engine.vitals.morale = 100;
+                engine.vitals.temperature = 37;
+                engine.addXP(50, 'diplomacy');
+                setVitals({ ...engine.vitals });
+                engine.notify(
+                  'Intimate embrace restored 100% Health, Stamina, Warmth & Morale!',
+                  '❤️‍🔥'
+                );
+              }}
             />
           )}
         </>
+      )}
+
+      {/* User Account (Sign Up / Log In / Cloud Profile) Modal */}
+      {isAuthModalOpen && (
+        <AuthModal
+          onClose={() => setIsAuthModalOpen(false)}
+          accountProfile={accountProfile}
+          onAuthSuccess={(profile) => {
+            setAccountProfile(profile);
+            localStorage.setItem(
+              'aetheria_account_profile',
+              JSON.stringify(profile)
+            );
+          }}
+          onGoogleSignIn={handleGoogleSignIn}
+          onSignOut={async () => {
+            await handleGoogleSignOut();
+          }}
+          onSaveToCloud={handleSaveGame}
+        />
+      )}
+
+      {/* Official Creator Credits Modal (Tyler Suggett) */}
+      {isCreditsModalOpen && (
+        <CreditsModal onClose={() => setIsCreditsModalOpen(false)} />
       )}
     </div>
   );

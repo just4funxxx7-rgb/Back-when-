@@ -1,12 +1,19 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   WorldSector,
   SurveyBeacon,
   NPCData,
   PlacedStructure,
+  RubblePile,
   MapWaypoint,
 } from '../types/game';
-import { Compass, Maximize2, MapPin } from 'lucide-react';
+import {
+  Compass,
+  Maximize2,
+  MapPin,
+  ChevronUp,
+  ChevronDown,
+} from 'lucide-react';
 
 interface MinimapHUDProps {
   playerPos: { x: number; z: number };
@@ -15,6 +22,7 @@ interface MinimapHUDProps {
   beacons: SurveyBeacon[];
   npcs: Record<string, NPCData>;
   structures: PlacedStructure[];
+  rubblePiles?: RubblePile[];
   exploredCells: Set<string>;
   activeWaypoint: MapWaypoint | null;
   onOpenWorldMap: () => void;
@@ -27,13 +35,14 @@ export const MinimapHUD: React.FC<MinimapHUDProps> = ({
   beacons,
   npcs,
   structures,
+  rubblePiles = [],
   exploredCells,
   activeWaypoint,
   onOpenWorldMap,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [isMinimized, setIsMinimized] = useState(false);
 
-  // Determine current sector name
   const currentSector =
     sectors.find(
       (s) =>
@@ -43,6 +52,7 @@ export const MinimapHUD: React.FC<MinimapHUDProps> = ({
   const discoveredSectorsCount = sectors.filter((s) => s.discovered).length;
 
   useEffect(() => {
+    if (isMinimized) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -52,15 +62,13 @@ export const MinimapHUD: React.FC<MinimapHUDProps> = ({
     const h = canvas.height;
     const cx = w / 2;
     const cy = h / 2;
-    const scale = 0.48; // 1 meter = 0.48 px on minimap (shows ~110m radius)
+    const scale = 0.48;
 
     ctx.clearRect(0, 0, w, h);
 
-    // Dark topographic radar background
     ctx.fillStyle = '#090d11';
     ctx.fillRect(0, 0, w, h);
 
-    // Draw Explored Fog-of-War cells relative to player
     const cellSize = 12;
     ctx.fillStyle = '#1b2a1e';
     exploredCells.forEach((cellKey) => {
@@ -79,7 +87,6 @@ export const MinimapHUD: React.FC<MinimapHUDProps> = ({
       }
     });
 
-    // Radar concentric range rings
     ctx.strokeStyle = 'rgba(255,255,255,0.08)';
     ctx.lineWidth = 1;
     [25, 50].forEach((r) => {
@@ -124,6 +131,16 @@ export const MinimapHUD: React.FC<MinimapHUDProps> = ({
       ctx.fillRect(sx - 2, sz - 2, 4, 4);
     });
 
+    // Persistent Rubble Piles (Red-Amber Ruins)
+    rubblePiles.forEach((rb) => {
+      const sx = cx + (rb.x - playerPos.x) * scale;
+      const sz = cy + (rb.z - playerPos.z) * scale;
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(sx, sz, 3, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
     // NPCs
     Object.values(npcs).forEach((npc) => {
       const sx = cx + (npc.position.x - playerPos.x) * scale;
@@ -144,7 +161,6 @@ export const MinimapHUD: React.FC<MinimapHUDProps> = ({
       ctx.fill();
     });
 
-    // Active Waypoint Target or Edge Direction Indicator
     if (activeWaypoint) {
       let wx = cx + (activeWaypoint.x - playerPos.x) * scale;
       let wz = cy + (activeWaypoint.z - playerPos.z) * scale;
@@ -163,7 +179,6 @@ export const MinimapHUD: React.FC<MinimapHUDProps> = ({
       ctx.stroke();
     }
 
-    // Player Heading Cone & Center Marker
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(-playerAngle + Math.PI);
@@ -180,12 +195,14 @@ export const MinimapHUD: React.FC<MinimapHUDProps> = ({
     ctx.arc(cx, cy, 3.5, 0, Math.PI * 2);
     ctx.fill();
   }, [
+    isMinimized,
     playerPos,
     playerAngle,
     sectors,
     beacons,
     npcs,
     structures,
+    rubblePiles,
     exploredCells,
     activeWaypoint,
   ]);
@@ -200,44 +217,70 @@ export const MinimapHUD: React.FC<MinimapHUDProps> = ({
     : null;
 
   return (
-    <div
-      onClick={onOpenWorldMap}
-      className="group cursor-pointer bg-neutral-900/95 border border-neutral-800 hover:border-amber-500/60 rounded-xl p-2 shadow-2xl transition w-36 sm:w-44 select-none"
-      title="Click or press [M] to open Interactive World Map"
-    >
-      <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center gap-1 truncate">
+    <div className="bg-neutral-900/95 border border-neutral-800 hover:border-amber-500/60 rounded-xl p-2 shadow-2xl transition w-36 sm:w-44 select-none">
+      <div className="flex items-center justify-between">
+        <div
+          onClick={onOpenWorldMap}
+          className="flex items-center gap-1 truncate cursor-pointer flex-1"
+          title="Open Interactive World Map [M]"
+        >
           <Compass className="w-3.5 h-3.5 text-amber-400 shrink-0" />
           <span className="text-[10px] font-bold text-neutral-200 truncate">
             {currentSector?.name || 'Frontier'}
           </span>
         </div>
-        <Maximize2 className="w-3 h-3 text-neutral-400 group-hover:text-amber-400 shrink-0" />
-      </div>
-
-      <div className="relative rounded-lg overflow-hidden border border-neutral-800 bg-black flex items-center justify-center">
-        <canvas
-          ref={canvasRef}
-          width={140}
-          height={104}
-          className="w-full h-24 block"
-        />
-        <div className="absolute bottom-1 left-1.5 right-1.5 flex items-center justify-between text-[9px] font-mono text-neutral-300 bg-black/70 px-1.5 py-0.5 rounded">
-          <span>
-            Sectors: {discoveredSectorsCount}/{sectors.length}
-          </span>
-          <span className="text-amber-400 font-bold">[M] Map</span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onOpenWorldMap}
+            className="text-neutral-400 hover:text-amber-400 p-0.5 cursor-pointer"
+            title="Full World Map [M]"
+          >
+            <Maximize2 className="w-3 h-3" />
+          </button>
+          <button
+            onClick={() => setIsMinimized(!isMinimized)}
+            className="text-neutral-400 hover:text-white p-0.5 cursor-pointer"
+            title={isMinimized ? 'Expand Minimap' : 'Minimize Minimap'}
+          >
+            {isMinimized ? (
+              <ChevronDown className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronUp className="w-3.5 h-3.5" />
+            )}
+          </button>
         </div>
       </div>
 
-      {activeWaypoint && wpDist !== null && (
-        <div className="mt-1 flex items-center justify-between text-[10px] font-mono text-amber-300 truncate">
-          <span className="flex items-center gap-1 truncate">
-            <MapPin className="w-3 h-3 text-amber-400 shrink-0" />
-            <span className="truncate">{activeWaypoint.label}</span>
-          </span>
-          <span className="font-bold shrink-0 ml-1">{wpDist}m</span>
-        </div>
+      {!isMinimized && (
+        <>
+          <div
+            onClick={onOpenWorldMap}
+            className="mt-1 relative rounded-lg overflow-hidden border border-neutral-800 bg-black flex items-center justify-center cursor-pointer"
+          >
+            <canvas
+              ref={canvasRef}
+              width={140}
+              height={104}
+              className="w-full h-24 block"
+            />
+            <div className="absolute bottom-1 left-1.5 right-1.5 flex items-center justify-between text-[9px] font-mono text-neutral-300 bg-black/70 px-1.5 py-0.5 rounded">
+              <span>
+                Sectors: {discoveredSectorsCount}/{sectors.length}
+              </span>
+              <span className="text-amber-400 font-bold">[M] Map</span>
+            </div>
+          </div>
+
+          {activeWaypoint && wpDist !== null && (
+            <div className="mt-1 flex items-center justify-between text-[10px] font-mono text-amber-300 truncate">
+              <span className="flex items-center gap-1 truncate">
+                <MapPin className="w-3 h-3 text-amber-400 shrink-0" />
+                <span className="truncate">{activeWaypoint.label}</span>
+              </span>
+              <span className="font-bold shrink-0 ml-1">{wpDist}m</span>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

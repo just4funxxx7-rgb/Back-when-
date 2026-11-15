@@ -15,6 +15,9 @@ import {
   createPlayerModel,
   createNPCModel,
   createStructureMesh,
+  createDebrisChunkMesh,
+  createRubblePileMesh,
+  NPCModelParts,
 } from './proceduralModels';
 import {
   getTerrainHeight,
@@ -28,6 +31,7 @@ import {
   PlayerSkills,
   Item,
   PlacedStructure,
+  RubblePile,
   HarvestableNode,
   NPCData,
   WorldSector,
@@ -46,6 +50,23 @@ import {
 const _vec3A = new THREE.Vector3();
 const _vec3B = new THREE.Vector3();
 const _camOffset = new THREE.Vector3();
+
+interface DebrisParticle {
+  mesh: THREE.Mesh;
+  velocity: THREE.Vector3;
+  angularVelocity: THREE.Vector3;
+  life: number;
+  maxLife: number;
+}
+
+interface RagdollActorState {
+  active: boolean;
+  timer: number;
+  duration: number;
+  velocity: THREE.Vector3;
+  angularVel: THREE.Vector3;
+  limbPhase: number;
+}
 
 export class GameEngine {
   public renderer!: THREE.WebGLRenderer;
@@ -69,6 +90,20 @@ export class GameEngine {
   private swingAnimTimer: number = 0;
   private walkAnimTimer: number = 0;
   public rollTimer: number = 0;
+
+  // Ragdoll Physics & Structural Debris State
+  public playerRagdoll: RagdollActorState = {
+    active: false,
+    timer: 0,
+    duration: 2.5,
+    velocity: new THREE.Vector3(),
+    angularVel: new THREE.Vector3(),
+    limbPhase: 0,
+  };
+  private npcRagdolls: Record<string, RagdollActorState> = {};
+  private debrisParticles: DebrisParticle[] = [];
+  public rubblePiles: RubblePile[] = [];
+  private rubbleMeshes: Map<string, THREE.Group> = new Map();
 
   // Camera third-person orbit state
   public cameraDistance: number = 6.8;
@@ -733,6 +768,309 @@ export class GameEngine {
 
   private initInitialStructures() {
     this.placeStructure('campfire', 3, 3, 0, true);
+    this.placeStructure('wall_log', -5.5, 4.5, 0.35, true);
+    // Spawn an initial persistent Rubble Pile from an old breached barricade on the perimeter
+    this.spawnRubblePile('watchtower', -8.5, -5.5, 0.6, true);
+  }
+
+  public spawnRubblePile(
+    originalType: PlacedStructure['type'],
+    x: number,
+    z: number,
+    rotationY: number = 0,
+    silent = false
+  ): RubblePile {
+    const y = getTerrainHeight(x, z);
+    const id = `rubble_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    const rubble: RubblePile = {
+      id,
+      originalType,
+      x,
+      y,
+      z,
+      rotationY,
+      createdAt: Date.now(),
+      salvageYield: [
+        { itemId: 'wood', count: 5 },
+        { itemId: 'stone', count: 3 },
+      ],
+    };
+
+    const mesh = createRubblePileMesh(originalType);
+    mesh.position.set(x, y, z);
+    mesh.rotation.y = rotationY;
+    this.scene.add(mesh);
+
+    this.rubbleMeshes.set(id, mesh);
+    this.rubblePiles.push(rubble);
+
+    if (!silent) {
+      this.notify(
+        `Collapsed ${originalType.replace('_', ' ')} left a persistent Rubble Pile! [E] to salvage`,
+        '🏚️'
+      );
+    }
+    return rubble;
+  }
+
+  public restoreRubblePiles(savedRubble: RubblePile[]) {
+    for (const mesh of this.rubbleMeshes.values()) {
+      this.scene.remove(mesh);
+    }
+    this.rubbleMeshes.clear();
+    this.rubblePiles = [];
+
+    for (const r of savedRubble) {
+      const y = getTerrainHeight(r.x, r.z);
+      const mesh = createRubblePileMesh(r.originalType);
+      mesh.position.set(r.x, y, r.z);
+      mesh.rotation.y = r.rotationY || 0;
+      this.scene.add(mesh);
+      this.rubbleMeshes.set(r.id, mesh);
+      this.rubblePiles.push({ ...r, y });
+    }
+  }
+
+  public spawnDebrisBurst(
+    x: number,
+    y: number,
+    z: number,
+    count: number = 22
+  ) {
+    const types: ('wood' | 'stone' | 'iron')[] = ['wood', 'wood', 'stone', 'iron'];
+    for (let i = 0; i < count; i++) {
+      const matType = types[i % types.length];
+      const mesh = createDebrisChunkMesh(matType);
+      const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+      const speed = 3.5 + Math.random() * 6.5;
+      const upVel = 4.5 + Math.random() * 6.2;
+
+      mesh.position.set(
+        x + Math.cos(angle) * 0.4,
+        y + 0.5 + Math.random() * 1.1,
+        z + Math.sin(angle) * 0.4
+      );
+      mesh.rotation.set(
+        Math.random() * Math.PI,
+        Math.random() * Math.PI,
+        Math.random() * Math.PI
+      );
+      this.scene.add(mesh);
+
+      this.debrisParticles.push({
+        mesh,
+        velocity: new THREE.Vector3(
+          Math.cos(angle) * speed,
+          upVel,
+          Math.sin(angle) * speed
+        ),
+        angularVelocity: new THREE.Vector3(
+          (Math.random() - 0.5) * 12,
+          (Math.random() - 0.5) * 12,
+          (Math.random() - 0.5) * 12
+        ),
+        life: 0,
+        maxLife: 4.5 + Math.random() * 2.5,
+      });
+    }
+  }
+
+  public destroyStructureIntoRubble(structId: string) {
+    const idx = this.placedStructures.findIndex((s) => s.id === structId);
+    if (idx === -1) return;
+    const struct = this.placedStructures[idx];
+
+    const mesh = this.structureMeshes.get(struct.id);
+    if (mesh) {
+      this.scene.remove(mesh);
+      this.structureMeshes.delete(struct.id);
+    }
+    this.placedStructures.splice(idx, 1);
+
+    // 1. Spawn flying 3D physical debris chunks
+    this.spawnDebrisBurst(struct.x, struct.y, struct.z, 24);
+    audioEngine.playAxeChop();
+    audioEngine.playMiningPick();
+    this.cameraTrauma = Math.min(1.0, this.cameraTrauma + 0.78);
+
+    // 2. Spawn persistent 3D Rubble Pile in the world
+    this.spawnRubblePile(
+      struct.type,
+      struct.x,
+      struct.z,
+      struct.rotationY,
+      false
+    );
+
+    // 3. Apply shockwave ragdoll physics to nearby player or NPCs
+    const sPos = new THREE.Vector3(struct.x, struct.y, struct.z);
+    const pDist = this.playerGroup.position.distanceTo(sPos);
+    if (pDist < 5.2) {
+      const dir = new THREE.Vector3()
+        .subVectors(this.playerGroup.position, sPos)
+        .normalize();
+      this.triggerPlayerRagdoll(dir, 10.5);
+    }
+
+    for (const npc of Object.values(this.npcs)) {
+      const nDist = npc.mesh.position.distanceTo(sPos);
+      if (nDist < 6.0) {
+        const dir = new THREE.Vector3()
+          .subVectors(npc.mesh.position, sPos)
+          .normalize();
+        this.triggerNPCRagdoll(npc.id, dir, 9.5);
+      }
+    }
+
+    if (this.onStructurePlacedCallback) {
+      this.onStructurePlacedCallback([...this.placedStructures]);
+    }
+  }
+
+  public demolishNearestStructure() {
+    let nearest: PlacedStructure | null = null;
+    let minDist = 14.0;
+    for (const s of this.placedStructures) {
+      const d = Math.hypot(
+        this.playerGroup.position.x - s.x,
+        this.playerGroup.position.z - s.z
+      );
+      if (d < minDist) {
+        minDist = d;
+        nearest = s;
+      }
+    }
+
+    if (nearest) {
+      this.destroyStructureIntoRubble(nearest.id);
+    } else {
+      // Spawn a temporary barricade 3.5m ahead and immediately shatter it into flying debris + persistent rubble!
+      const tx =
+        this.playerGroup.position.x + Math.sin(this.playerFacingAngle) * 3.6;
+      const tz =
+        this.playerGroup.position.z + Math.cos(this.playerFacingAngle) * 3.6;
+      this.placeStructure('wall_log', tx, tz, this.playerFacingAngle, true);
+      const latest = this.placedStructures[this.placedStructures.length - 1];
+      if (latest) {
+        this.destroyStructureIntoRubble(latest.id);
+      }
+    }
+  }
+
+  public salvageRubblePile(rubbleId: string) {
+    const idx = this.rubblePiles.findIndex((r) => r.id === rubbleId);
+    if (idx === -1) return;
+    const rubble = this.rubblePiles[idx];
+
+    // Spawn small dust/splinter burst
+    this.spawnDebrisBurst(rubble.x, rubble.y, rubble.z, 8);
+    audioEngine.playAxeChop();
+
+    for (const item of rubble.salvageYield) {
+      this.addInventoryItem(item.itemId, item.count);
+      this.recordMissionProgress('harvest', item.itemId, item.count);
+    }
+
+    const mesh = this.rubbleMeshes.get(rubble.id);
+    if (mesh) {
+      this.scene.remove(mesh);
+      this.rubbleMeshes.delete(rubble.id);
+    }
+    this.rubblePiles.splice(idx, 1);
+    this.addXP(35, 'engineering');
+    this.notify(
+      `Salvaged Reclaimed Timber & Stone from Rubble Pile! (+35 XP)`,
+      '♻️'
+    );
+  }
+
+  // Articulated Ragdoll Physics Trigger for Player
+  public triggerPlayerRagdoll(
+    impulseDir?: THREE.Vector3,
+    strength: number = 11.0
+  ) {
+    if (this.playerRagdoll.active) {
+      // Recover immediately if toggled again while ragdolling
+      this.playerRagdoll.active = false;
+      this.playerRagdoll.timer = 0;
+      this.notify('Recovered from Ragdoll Physics state', '🧍');
+      return;
+    }
+
+    const dir =
+      impulseDir ||
+      new THREE.Vector3(
+        -Math.sin(this.playerFacingAngle) + (Math.random() - 0.5) * 0.5,
+        0.65,
+        -Math.cos(this.playerFacingAngle) + (Math.random() - 0.5) * 0.5
+      ).normalize();
+
+    this.playerRagdoll.active = true;
+    this.playerRagdoll.timer = 0;
+    this.playerRagdoll.duration = 2.6;
+    this.playerRagdoll.velocity.set(
+      dir.x * strength,
+      Math.max(5.5, dir.y * strength),
+      dir.z * strength
+    );
+    this.playerRagdoll.angularVel.set(
+      (Math.random() > 0.5 ? 1 : -1) * (5.5 + Math.random() * 4.0),
+      (Math.random() - 0.5) * 6.0,
+      (Math.random() - 0.5) * 5.5
+    );
+    this.playerRagdoll.limbPhase = Math.random() * Math.PI * 2;
+    this.cameraTrauma = Math.min(1.0, this.cameraTrauma + 0.55);
+    audioEngine.playAttackSwish();
+    this.notify('Ragdoll Physics Impulse Activated!', '💥');
+  }
+
+  // Articulated Ragdoll Physics Trigger for NPCs
+  public triggerNPCRagdoll(
+    npcId: string,
+    impulseDir?: THREE.Vector3,
+    strength: number = 9.5
+  ) {
+    const npc = this.npcs[npcId];
+    if (!npc) return;
+
+    const dir =
+      impulseDir ||
+      new THREE.Vector3(
+        Math.sin(this.playerFacingAngle),
+        0.55,
+        Math.cos(this.playerFacingAngle)
+      ).normalize();
+
+    this.npcRagdolls[npcId] = {
+      active: true,
+      timer: 0,
+      duration: 2.8,
+      velocity: new THREE.Vector3(
+        dir.x * strength,
+        5.2,
+        dir.z * strength
+      ),
+      angularVel: new THREE.Vector3(
+        6.2,
+        (Math.random() - 0.5) * 5.0,
+        (Math.random() - 0.5) * 5.0
+      ),
+      limbPhase: Math.random() * Math.PI * 2,
+    };
+    audioEngine.playAttackSwish();
+    this.notify(`${npc.name} knocked into Ragdoll Physics tumble!`, '💥');
+  }
+
+  public setNPCFollowing(npcId: string, follow: boolean) {
+    const npc = this.npcs[npcId];
+    if (!npc) return;
+    npc.followingPlayer = follow;
+    this.notify(
+      follow
+        ? `${npc.name} is now accompanying you on patrol!`
+        : `${npc.name} is holding position at camp.`,
+      follow ? '🛡️' : '⛺'
+    );
   }
 
   private initInitialInventory() {
@@ -968,6 +1306,50 @@ export class GameEngine {
     this.swingAnimTimer = 0.35;
     audioEngine.playAttackSwish();
 
+    // 1. Check if striking an NPC (triggers physical ragdoll reaction!)
+    for (const npc of Object.values(this.npcs)) {
+      const dist = this.playerGroup.position.distanceTo(npc.mesh.position);
+      if (dist < 2.6) {
+        const dir = new THREE.Vector3()
+          .subVectors(npc.mesh.position, this.playerGroup.position)
+          .normalize();
+        this.triggerNPCRagdoll(npc.id, dir, 9.5);
+        this.cameraTrauma = Math.min(1.0, this.cameraTrauma + 0.35);
+        return;
+      }
+    }
+
+    // 2. Check if striking a Placed Structure (damages structure, spawns debris, collapses into persistent Rubble Pile!)
+    for (const struct of this.placedStructures) {
+      const sPos = new THREE.Vector3(struct.x, struct.y, struct.z);
+      const dist = this.playerGroup.position.distanceTo(sPos);
+      if (dist < 3.4) {
+        struct.health -= 35;
+        this.spawnDebrisBurst(struct.x, struct.y, struct.z, 6);
+        audioEngine.playAxeChop();
+        this.cameraTrauma = Math.min(1.0, this.cameraTrauma + 0.35);
+
+        const sMesh = this.structureMeshes.get(struct.id);
+        if (sMesh) {
+          sMesh.rotation.z = (Math.random() - 0.5) * 0.08;
+        }
+
+        if (struct.health <= 0) {
+          this.destroyStructureIntoRubble(struct.id);
+        } else {
+          this.notify(
+            `Damaged ${struct.type.replace('_', ' ')} (${Math.max(
+              0,
+              struct.health
+            )}/${struct.maxHealth} HP)`,
+            '🔨'
+          );
+        }
+        return;
+      }
+    }
+
+    // 3. Check Harvestable Resource Nodes
     let nearestNode: (typeof this.harvestNodes)[0] | null = null;
     let minDist = 3.4;
 
@@ -1039,7 +1421,19 @@ export class GameEngine {
       }
     }
 
-    // 2. Check NPC interaction
+    // 2. Check Persistent Rubble Pile Salvage interaction
+    for (const rubble of this.rubblePiles) {
+      const dist = Math.hypot(
+        this.playerGroup.position.x - rubble.x,
+        this.playerGroup.position.z - rubble.z
+      );
+      if (dist < 3.6) {
+        this.salvageRubblePile(rubble.id);
+        return;
+      }
+    }
+
+    // 3. Check NPC interaction
     for (const npc of Object.values(this.npcs)) {
       const dist = this.playerGroup.position.distanceTo(npc.mesh.position);
       if (dist < 3.8) {
@@ -1051,7 +1445,7 @@ export class GameEngine {
       }
     }
 
-    // 3. Check Campfire rest & cook
+    // 4. Check Campfire rest & cook
     for (const struct of this.placedStructures) {
       if (struct.type === 'campfire') {
         const dist = this.playerGroup.position.distanceTo(
@@ -1072,12 +1466,12 @@ export class GameEngine {
       }
     }
 
-    // 4. Fallback harvest
+    // 5. Fallback harvest
     this.performAction();
   }
 
   public triggerDodgeRoll() {
-    if (this.rollTimer > 0) return;
+    if (this.rollTimer > 0 || this.playerRagdoll.active) return;
     if (this.vitals.stamina < 15) {
       this.notify('Not enough stamina for tactical roll!', '⚡');
       return;
@@ -1104,7 +1498,294 @@ export class GameEngine {
     this.notify('Tactical Dodge Roll', '💨');
   }
 
+  // Update Flying Debris Fragments & NPC Companion AI + Ragdoll Physics
+  private updatePhysicsAndCompanions(delta: number) {
+    // 1. Update 3D Flying Debris Fragments (Ballistic Trajectory + Ground Bounce + Friction)
+    for (let i = this.debrisParticles.length - 1; i >= 0; i--) {
+      const p = this.debrisParticles[i];
+      p.life += delta;
+      if (p.life >= p.maxLife) {
+        this.scene.remove(p.mesh);
+        this.debrisParticles.splice(i, 1);
+        continue;
+      }
+
+      p.velocity.y -= 19.6 * delta; // Gravity
+      p.mesh.position.x += p.velocity.x * delta;
+      p.mesh.position.y += p.velocity.y * delta;
+      p.mesh.position.z += p.velocity.z * delta;
+
+      p.mesh.rotation.x += p.angularVelocity.x * delta;
+      p.mesh.rotation.y += p.angularVelocity.y * delta;
+      p.mesh.rotation.z += p.angularVelocity.z * delta;
+
+      const groundY =
+        getTerrainHeight(p.mesh.position.x, p.mesh.position.z) + 0.08;
+      if (p.mesh.position.y <= groundY) {
+        p.mesh.position.y = groundY;
+        p.velocity.y = Math.abs(p.velocity.y) * 0.36; // Ground bounce restitution
+        p.velocity.x *= 0.72;
+        p.velocity.z *= 0.72;
+        p.angularVelocity.multiplyScalar(0.68);
+      }
+
+      // Fade out gently in final second
+      if (p.life > p.maxLife - 0.8) {
+        const s = Math.max(0.05, (p.maxLife - p.life) / 0.8);
+        p.mesh.scale.setScalar(s);
+      }
+    }
+
+    // 2. Update NPCs (Ragdoll Physics OR Autonomous Companion Follow + Head-Tracking)
+    const time = this.clock.getElapsedTime();
+    Object.values(this.npcs).forEach((npc, idx) => {
+      const parts = npc.mesh.userData.parts as NPCModelParts | undefined;
+      const rag = this.npcRagdolls[npc.id];
+
+      if (parts?.marker) {
+        parts.marker.rotation.y = time * 2.0 + idx;
+        parts.marker.position.y = 2.38 + Math.sin(time * 2.5 + idx) * 0.06;
+      }
+
+      if (rag && rag.active) {
+        rag.timer += delta;
+        rag.velocity.y -= 20.0 * delta;
+        npc.mesh.position.x += rag.velocity.x * delta;
+        npc.mesh.position.y += rag.velocity.y * delta;
+        npc.mesh.position.z += rag.velocity.z * delta;
+
+        const gy = getTerrainHeight(npc.mesh.position.x, npc.mesh.position.z);
+        if (npc.mesh.position.y <= gy) {
+          npc.mesh.position.y = gy;
+          rag.velocity.y = Math.abs(rag.velocity.y) * 0.3;
+          rag.velocity.x *= 0.78;
+          rag.velocity.z *= 0.78;
+          rag.angularVel.multiplyScalar(0.75);
+        }
+
+        if (parts) {
+          // Articulated ragdoll collapse & limb flail
+          parts.pelvisGroup.position.y = THREE.MathUtils.damp(
+            parts.pelvisGroup.position.y,
+            0.28,
+            10,
+            delta
+          );
+          parts.pelvisGroup.rotation.x = THREE.MathUtils.damp(
+            parts.pelvisGroup.rotation.x,
+            -Math.PI * 0.46,
+            8,
+            delta
+          );
+          parts.pelvisGroup.rotation.z =
+            Math.sin(rag.timer * 8 + rag.limbPhase) * 0.35;
+          parts.leftArm.rotation.x =
+            -1.2 + Math.sin(rag.timer * 12) * 0.65;
+          parts.rightArm.rotation.x =
+            -1.2 + Math.cos(rag.timer * 12) * 0.65;
+          parts.leftLeg.rotation.x =
+            0.45 + Math.sin(rag.timer * 10) * 0.45;
+          parts.rightLeg.rotation.x =
+            -0.35 + Math.cos(rag.timer * 10) * 0.45;
+        }
+
+        npc.position.x = npc.mesh.position.x;
+        npc.position.y = npc.mesh.position.y;
+        npc.position.z = npc.mesh.position.z;
+
+        if (rag.timer >= rag.duration) {
+          rag.active = false;
+        }
+        return;
+      }
+
+      // Smooth recovery & normal articulated NPC behavior
+      if (parts) {
+        parts.pelvisGroup.position.y = THREE.MathUtils.damp(
+          parts.pelvisGroup.position.y,
+          0.94,
+          8,
+          delta
+        );
+        parts.pelvisGroup.rotation.x = THREE.MathUtils.damp(
+          parts.pelvisGroup.rotation.x,
+          0,
+          8,
+          delta
+        );
+        parts.pelvisGroup.rotation.z = THREE.MathUtils.damp(
+          parts.pelvisGroup.rotation.z,
+          0,
+          8,
+          delta
+        );
+      }
+
+      const dx = this.playerGroup.position.x - npc.mesh.position.x;
+      const dz = this.playerGroup.position.z - npc.mesh.position.z;
+      const distToPlayer = Math.hypot(dx, dz);
+
+      if (npc.followingPlayer && distToPlayer > 2.8) {
+        // Companion Follow Mode: Walk alongside the player!
+        const moveAngle = Math.atan2(dx, dz);
+        const followSpeed = distToPlayer > 9 ? 7.2 : 5.2;
+        npc.mesh.position.x += Math.sin(moveAngle) * followSpeed * delta;
+        npc.mesh.position.z += Math.cos(moveAngle) * followSpeed * delta;
+        npc.mesh.position.y = getTerrainHeight(
+          npc.mesh.position.x,
+          npc.mesh.position.z
+        );
+        npc.mesh.rotation.y = THREE.MathUtils.damp(
+          npc.mesh.rotation.y,
+          moveAngle,
+          10,
+          delta
+        );
+
+        npc.position.x = npc.mesh.position.x;
+        npc.position.y = npc.mesh.position.y;
+        npc.position.z = npc.mesh.position.z;
+
+        if (parts) {
+          const gait = Math.sin(time * 9.5 + idx) * 0.55;
+          parts.leftLeg.rotation.x = gait;
+          parts.rightLeg.rotation.x = -gait;
+          parts.leftArm.rotation.x = -gait * 0.7;
+          parts.rightArm.rotation.x = gait * 0.7;
+          parts.pelvisGroup.position.y =
+            0.94 + Math.abs(Math.sin(time * 9.5 + idx)) * 0.03;
+        }
+      } else {
+        // Standing / Guarding: Turn smoothly toward player when nearby & animate subtle breathing + head tracking
+        if (distToPlayer < 8.5) {
+          const targetYaw = Math.atan2(dx, dz);
+          npc.mesh.rotation.y = THREE.MathUtils.damp(
+            npc.mesh.rotation.y,
+            targetYaw,
+            6,
+            delta
+          );
+          if (parts) {
+            parts.headGroup.rotation.x = THREE.MathUtils.damp(
+              parts.headGroup.rotation.x,
+              -0.06,
+              6,
+              delta
+            );
+            // Subtle welcoming wave/gesture when very close
+            parts.rightArm.rotation.x = THREE.MathUtils.damp(
+              parts.rightArm.rotation.x,
+              distToPlayer < 3.5 ? -0.35 + Math.sin(time * 3.5) * 0.12 : 0,
+              6,
+              delta
+            );
+          }
+        } else if (parts) {
+          parts.headGroup.rotation.y = Math.sin(time * 0.8 + idx) * 0.22;
+          parts.rightArm.rotation.x = THREE.MathUtils.damp(
+            parts.rightArm.rotation.x,
+            0,
+            6,
+            delta
+          );
+        }
+
+        if (parts) {
+          parts.leftLeg.rotation.x = THREE.MathUtils.damp(
+            parts.leftLeg.rotation.x,
+            0,
+            8,
+            delta
+          );
+          parts.rightLeg.rotation.x = THREE.MathUtils.damp(
+            parts.rightLeg.rotation.x,
+            0,
+            8,
+            delta
+          );
+          parts.leftArm.rotation.x = THREE.MathUtils.damp(
+            parts.leftArm.rotation.x,
+            0,
+            8,
+            delta
+          );
+          parts.spineGroup.position.y = 0.08 + Math.sin(time * 1.8 + idx) * 0.01;
+        }
+      }
+    });
+  }
+
   private updatePlayerMovement(delta: number) {
+    // Handle Active Player Ragdoll Physics Simulation
+    if (this.playerRagdoll.active) {
+      this.playerRagdoll.timer += delta;
+      this.playerRagdoll.velocity.y -= 21.0 * delta;
+
+      this.playerGroup.position.x += this.playerRagdoll.velocity.x * delta;
+      this.playerGroup.position.y += this.playerRagdoll.velocity.y * delta;
+      this.playerGroup.position.z += this.playerRagdoll.velocity.z * delta;
+
+      const groundY = getTerrainHeight(
+        this.playerGroup.position.x,
+        this.playerGroup.position.z
+      );
+      if (this.playerGroup.position.y <= groundY) {
+        this.playerGroup.position.y = groundY;
+        if (Math.abs(this.playerRagdoll.velocity.y) > 2.2) {
+          audioEngine.playFootstep('stone');
+        }
+        this.playerRagdoll.velocity.y =
+          Math.abs(this.playerRagdoll.velocity.y) * 0.34;
+        this.playerRagdoll.velocity.x *= 0.78;
+        this.playerRagdoll.velocity.z *= 0.78;
+        this.playerRagdoll.angularVel.multiplyScalar(0.75);
+      }
+
+      // Articulated Ragdoll Body & Limb Kinematics
+      const t = this.playerRagdoll.timer;
+      const p = this.playerRagdoll.limbPhase;
+      this.playerParts.pelvisGroup.position.y = THREE.MathUtils.damp(
+        this.playerParts.pelvisGroup.position.y,
+        0.26,
+        10,
+        delta
+      );
+      this.playerParts.pelvisGroup.rotation.x = THREE.MathUtils.damp(
+        this.playerParts.pelvisGroup.rotation.x,
+        -Math.PI * 0.47,
+        9,
+        delta
+      );
+      this.playerParts.pelvisGroup.rotation.z =
+        Math.sin(t * 7.0 + p) * 0.42;
+      this.playerParts.spineGroup.position.y = 0.08;
+      this.playerParts.spineGroup.rotation.x =
+        0.28 + Math.sin(t * 9.0) * 0.25;
+      this.playerParts.spineGroup.rotation.z =
+        Math.cos(t * 8.0 + p) * 0.3;
+
+      this.playerParts.leftArm.rotation.x =
+        -1.35 + Math.sin(t * 14.0 + p) * 0.75;
+      this.playerParts.rightArm.rotation.x =
+        -1.25 + Math.cos(t * 13.0 + p) * 0.75;
+      this.playerParts.leftForearm.rotation.x = -0.65;
+      this.playerParts.rightForearm.rotation.x = -0.65;
+
+      this.playerParts.leftLeg.rotation.x =
+        0.5 + Math.sin(t * 11.0) * 0.55;
+      this.playerParts.rightLeg.rotation.x =
+        -0.4 + Math.cos(t * 11.0) * 0.55;
+      this.playerParts.leftLowerLeg.rotation.x = 0.85;
+      this.playerParts.rightLowerLeg.rotation.x = 0.75;
+
+      if (this.playerRagdoll.timer >= this.playerRagdoll.duration) {
+        this.playerRagdoll.active = false;
+        this.playerParts.pelvisGroup.rotation.z = 0;
+        this.notify('Survivor recovered to standing posture', '🧍');
+      }
+      return;
+    }
+
     const isSprinting =
       (this.keys['ShiftLeft'] || this.keys['ShiftRight']) &&
       this.vitals.stamina > 5;
@@ -1266,6 +1947,12 @@ export class GameEngine {
         12,
         delta
       );
+      this.playerParts.pelvisGroup.rotation.z = THREE.MathUtils.damp(
+        this.playerParts.pelvisGroup.rotation.z,
+        0,
+        12,
+        delta
+      );
       moveX /= moveLength;
       moveZ /= moveLength;
 
@@ -1348,6 +2035,12 @@ export class GameEngine {
     } else {
       this.playerParts.pelvisGroup.rotation.x = THREE.MathUtils.damp(
         this.playerParts.pelvisGroup.rotation.x,
+        0,
+        12,
+        delta
+      );
+      this.playerParts.pelvisGroup.rotation.z = THREE.MathUtils.damp(
+        this.playerParts.pelvisGroup.rotation.z,
         0,
         12,
         delta
@@ -1511,7 +2204,7 @@ export class GameEngine {
       );
     }
 
-    // Check interaction prompts (Survey Beacons, NPCs, Harvest Nodes, Campfires)
+    // Check interaction prompts (Survey Beacons, Rubble Piles, NPCs, Harvest Nodes, Structures)
     let promptTarget: string | null = null;
     for (const beacon of this.surveyBeacons) {
       if (
@@ -1523,9 +2216,25 @@ export class GameEngine {
       }
     }
     if (!promptTarget) {
+      for (const rubble of this.rubblePiles) {
+        if (
+          Math.hypot(
+            this.playerGroup.position.x - rubble.x,
+            this.playerGroup.position.z - rubble.z
+          ) < 3.6
+        ) {
+          promptTarget = `Salvage Persistent ${rubble.originalType.replace(
+            '_',
+            ' '
+          )} Rubble Pile [E]`;
+          break;
+        }
+      }
+    }
+    if (!promptTarget) {
       for (const npc of Object.values(this.npcs)) {
         if (this.playerGroup.position.distanceTo(npc.mesh.position) < 3.8) {
-          promptTarget = `Talk with ${npc.name} [E]`;
+          promptTarget = `Talk with ${npc.name} [E] · Strike for Ragdoll [Click]`;
           break;
         }
       }
@@ -1542,13 +2251,19 @@ export class GameEngine {
     }
     if (!promptTarget) {
       for (const struct of this.placedStructures) {
-        if (
-          struct.type === 'campfire' &&
-          this.playerGroup.position.distanceTo(
-            new THREE.Vector3(struct.x, struct.y, struct.z)
-          ) < 3.8
-        ) {
-          promptTarget = 'Warm & Rest by Campfire [E]';
+        const d = this.playerGroup.position.distanceTo(
+          new THREE.Vector3(struct.x, struct.y, struct.z)
+        );
+        if (d < 3.8) {
+          if (struct.type === 'campfire') {
+            promptTarget =
+              'Warm & Rest by Campfire [E] · Strike to Demolish into Rubble [Click]';
+          } else {
+            promptTarget = `Strike ${struct.type.replace(
+              '_',
+              ' '
+            )} (${struct.health}/${struct.maxHealth} HP) to Shatter into Rubble [Click / X]`;
+          }
           break;
         }
       }
@@ -1683,9 +2398,15 @@ export class GameEngine {
 
   private bindEvents() {
     window.addEventListener('keydown', (e) => {
+      // Ignore shortcuts if typing in an input or textarea
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
       this.keys[e.code] = true;
       if (e.code === 'KeyE') this.interactNearest();
       if (e.code === 'KeyF') this.performAction();
+      if (e.code === 'KeyK') this.triggerPlayerRagdoll();
+      if (e.code === 'KeyX') this.demolishNearestStructure();
       if (e.code === 'KeyC' || e.code === 'AltLeft') this.triggerDodgeRoll();
       if (e.code === 'KeyR' && this.placementActive) this.rotatePlacement();
       if (e.code >= 'Digit1' && e.code <= 'Digit6') {
@@ -1830,6 +2551,7 @@ export class GameEngine {
       const delta = Math.min(rawDt, 0.05);
 
       this.updatePlayerMovement(delta);
+      this.updatePhysicsAndCompanions(delta);
       this.updateExplorationAndMapExpansion(delta);
       this.updateCamera(delta);
       this.weatherSystem.update(delta, this.playerGroup.position);

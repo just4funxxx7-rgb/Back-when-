@@ -1,82 +1,141 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { PlayerVitals } from '../types/game';
-import { Heart, Zap, Apple, Droplet, Thermometer, Smile, Shield } from 'lucide-react';
+import {
+  Heart,
+  Zap,
+  Flame,
+  Droplets,
+  Thermometer,
+  ChevronUp,
+  ChevronDown,
+} from 'lucide-react';
 
 interface VitalsHUDProps {
   vitals: PlayerVitals;
 }
 
 export const VitalsHUD: React.FC<VitalsHUDProps> = ({ vitals }) => {
-  // Temp color
-  let tempColor = 'text-emerald-400';
-  if (vitals.temperature < 14) tempColor = 'text-cyan-300';
-  if (vitals.temperature < 8) tempColor = 'text-blue-400';
-  if (vitals.temperature > 28) tempColor = 'text-amber-400';
+  const [isMinimized, setIsMinimized] = useState(false);
+
+  const hpPct = Math.max(
+    0,
+    Math.min(100, (vitals.health / vitals.maxHealth) * 100)
+  );
+  const stPct = Math.max(
+    0,
+    Math.min(100, (vitals.stamina / vitals.maxStamina) * 100)
+  );
+  const huPct = Math.max(0, Math.min(100, vitals.hunger));
+  const thPct = Math.max(0, Math.min(100, vitals.thirst));
 
   return (
-    <div className="flex flex-col gap-1 sm:gap-1.5 p-2 sm:p-3 bg-neutral-900/95 text-neutral-100 rounded-xl border border-neutral-800 shadow-2xl select-none w-[176px] sm:w-64">
-      {/* Level & Rank Header */}
-      <div className="flex items-center justify-between text-[10px] sm:text-xs pb-1 border-b border-neutral-800">
-        <div className="flex items-center gap-1 font-bold tracking-wider text-amber-400 truncate">
-          <Shield className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
-          <span className="truncate">LV.{vitals.level} OUTCAST</span>
-        </div>
-        <span className="text-neutral-400 font-mono tabular-nums text-[9px] sm:text-[11px] shrink-0">
-          {vitals.xp}/{vitals.nextLevelXp}
-        </span>
-      </div>
-
-      {/* Health Bar */}
-      <div className="flex items-center gap-1.5 sm:gap-2">
-        <Heart className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-500 shrink-0" />
-        <div className="flex-1 h-3 sm:h-3.5 bg-neutral-800 rounded-sm overflow-hidden border border-neutral-700/60 relative">
-          <div
-            className="h-full bg-rose-600 transition-all duration-300"
-            style={{ width: `${Math.max(0, Math.min(100, (vitals.health / vitals.maxHealth) * 100))}%` }}
-          />
-          <span className="absolute inset-0 flex items-center justify-center text-[9px] sm:text-[10px] font-mono tabular-nums font-bold text-white drop-shadow">
-            {Math.round(vitals.health)}/{vitals.maxHealth}
+    <div className="p-2 sm:p-3 bg-neutral-900/90 text-neutral-100 rounded-xl border border-neutral-800 w-44 sm:w-64 select-none shadow-xl">
+      {/* Header Row with Minimize Button */}
+      <div className="flex items-center justify-between gap-1">
+        <div className="flex items-center gap-1.5">
+          <span className="px-1.5 py-0.5 text-[10px] sm:text-xs font-mono font-bold bg-amber-500/20 text-amber-400 rounded border border-amber-500/40">
+            LVL {vitals.level}
+          </span>
+          <span className="text-[11px] font-bold text-neutral-200 truncate">
+            {isMinimized
+              ? `${Math.round(vitals.health)} HP · ${vitals.temperature.toFixed(0)}°C`
+              : 'Survivor Vitals'}
           </span>
         </div>
-      </div>
 
-      {/* Stamina Bar */}
-      <div className="flex items-center gap-1.5 sm:gap-2">
-        <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400 shrink-0" />
-        <div className="flex-1 h-2 sm:h-2.5 bg-neutral-800 rounded-sm overflow-hidden border border-neutral-700/60 relative">
-          <div
-            className="h-full bg-emerald-500 transition-all duration-150"
-            style={{ width: `${Math.max(0, Math.min(100, (vitals.stamina / vitals.maxStamina) * 100))}%` }}
-          />
+        <div className="flex items-center gap-1">
+          {!isMinimized && (
+            <div className="flex items-center gap-0.5 text-[10px] sm:text-xs font-mono text-neutral-300">
+              <Thermometer className="w-3 h-3 text-amber-400" />
+              <span>{vitals.temperature.toFixed(1)}°C</span>
+            </div>
+          )}
+          <button
+            onClick={() => setIsMinimized(!isMinimized)}
+            className="p-0.5 rounded hover:bg-neutral-800 text-neutral-400 hover:text-white transition cursor-pointer"
+            title={isMinimized ? 'Expand Vitals HUD' : 'Minimize Vitals HUD'}
+          >
+            {isMinimized ? (
+              <ChevronDown className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronUp className="w-3.5 h-3.5" />
+            )}
+          </button>
         </div>
       </div>
 
-      {/* Nutritional & Environmental Grid */}
-      <div className="grid grid-cols-4 gap-1 pt-0.5 text-[9px] sm:text-[11px] font-mono tabular-nums">
-        {/* Hunger */}
-        <div className="flex items-center justify-center gap-0.5 bg-neutral-800/80 px-1 py-0.5 sm:px-1.5 sm:py-1 rounded border border-neutral-700/50" title="Hunger">
-          <Apple className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-amber-500 shrink-0" />
-          <span className="text-neutral-200">{Math.round(vitals.hunger)}</span>
-        </div>
+      {!isMinimized && (
+        <div className="mt-2">
+          {/* Health Bar */}
+          <div className="mb-1.5">
+            <div className="flex justify-between text-[10px] sm:text-xs mb-0.5">
+              <span className="flex items-center gap-1 font-medium text-rose-400">
+                <Heart className="w-3 h-3 fill-rose-500/30" /> HP
+              </span>
+              <span className="font-mono text-neutral-300">
+                {Math.round(vitals.health)}/{vitals.maxHealth}
+              </span>
+            </div>
+            <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-rose-500 transition-all duration-200"
+                style={{ width: `${hpPct}%` }}
+              />
+            </div>
+          </div>
 
-        {/* Thirst */}
-        <div className="flex items-center justify-center gap-0.5 bg-neutral-800/80 px-1 py-0.5 sm:px-1.5 sm:py-1 rounded border border-neutral-700/50" title="Thirst">
-          <Droplet className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-cyan-400 shrink-0" />
-          <span className="text-neutral-200">{Math.round(vitals.thirst)}</span>
-        </div>
+          {/* Stamina Bar */}
+          <div className="mb-2">
+            <div className="flex justify-between text-[10px] sm:text-xs mb-0.5">
+              <span className="flex items-center gap-1 font-medium text-emerald-400">
+                <Zap className="w-3 h-3 fill-emerald-500/30" /> STM
+              </span>
+              <span className="font-mono text-neutral-300">
+                {Math.round(vitals.stamina)}
+              </span>
+            </div>
+            <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-emerald-500 transition-all duration-150"
+                style={{ width: `${stPct}%` }}
+              />
+            </div>
+          </div>
 
-        {/* Temperature */}
-        <div className="flex items-center justify-center gap-0.5 bg-neutral-800/80 px-1 py-0.5 sm:px-1.5 sm:py-1 rounded border border-neutral-700/50" title="Body Temperature">
-          <Thermometer className={`w-2.5 h-2.5 sm:w-3 sm:h-3 ${tempColor} shrink-0`} />
-          <span className={tempColor}>{Math.round(vitals.temperature)}°</span>
-        </div>
+          {/* Hunger & Thirst Sub-Row */}
+          <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-neutral-800/80 text-[10px]">
+            <div>
+              <div className="flex items-center justify-between text-amber-300 mb-0.5">
+                <span className="flex items-center gap-0.5">
+                  <Flame className="w-2.5 h-2.5" /> Food
+                </span>
+                <span className="font-mono">{Math.round(huPct)}%</span>
+              </div>
+              <div className="w-full h-1 bg-neutral-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-amber-500"
+                  style={{ width: `${huPct}%` }}
+                />
+              </div>
+            </div>
 
-        {/* Morale */}
-        <div className="flex items-center justify-center gap-0.5 bg-neutral-800/80 px-1 py-0.5 sm:px-1.5 sm:py-1 rounded border border-neutral-700/50" title="Morale">
-          <Smile className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-purple-400 shrink-0" />
-          <span className="text-neutral-200">{Math.round(vitals.morale)}</span>
+            <div>
+              <div className="flex items-center justify-between text-sky-300 mb-0.5">
+                <span className="flex items-center gap-0.5">
+                  <Droplets className="w-2.5 h-2.5" /> H2O
+                </span>
+                <span className="font-mono">{Math.round(thPct)}%</span>
+              </div>
+              <div className="w-full h-1 bg-neutral-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-sky-400"
+                  style={{ width: `${thPct}%` }}
+                />
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

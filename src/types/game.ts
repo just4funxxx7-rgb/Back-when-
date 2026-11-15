@@ -153,6 +153,26 @@ export interface Mission {
   targetWaypoint?: { x: number; z: number; label: string };
 }
 
+export interface RubblePile {
+  id: string;
+  originalType: PlacedStructure['type'];
+  x: number;
+  y: number;
+  z: number;
+  rotationY: number;
+  createdAt: number;
+  salvageYield: { itemId: string; count: number }[];
+}
+
+export interface UserAccountProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+  role: 'admin' | 'survivor';
+  authProvider: 'google' | 'email';
+  createdAt?: string;
+}
+
 export interface NPCData {
   id: string;
   name: string;
@@ -169,6 +189,7 @@ export interface NPCData {
   position: { x: number; y: number; z: number };
   dialogueHistory: { speaker: 'npc' | 'player'; text: string; timestamp: number }[];
   moralStance: string;
+  followingPlayer?: boolean;
 }
 
 export interface MoralChoice {
@@ -218,6 +239,7 @@ export interface GameSaveState {
   };
   activeWeapon: Item | null;
   structures: PlacedStructure[];
+  rubblePiles?: RubblePile[];
   dayCount: number;
   timeOfDay: number; // 0 to 24 hours
   weather: WeatherType;

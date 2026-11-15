@@ -8,6 +8,7 @@ import {
   PlayerVitals,
   Mission,
   MapWaypoint,
+  UserAccountProfile,
 } from '../types/game';
 import {
   CRAFTING_RECIPES,
@@ -18,6 +19,7 @@ import { audioEngine } from '../game/audioEngine';
 import { EngineGraphicsConfig, GraphicsPresetType } from '../game/postprocessing';
 import {
   UNIFIED_PROJECT_NAME,
+  CREATOR_NAME,
   isClientAdminEmail,
   listUserSurvivalDocs,
   createSurvivalChronicleDoc,
@@ -56,6 +58,8 @@ import {
   Navigation,
   CheckCircle2,
   Circle,
+  UserCheck,
+  Flame,
 } from 'lucide-react';
 
 interface BottomDockProps {
@@ -93,6 +97,11 @@ interface BottomDockProps {
   onGoogleSignIn: () => Promise<void>;
   onGoogleSignOut: () => Promise<void>;
   onNotify: (msg: string, icon?: string) => void;
+  onOpenAuth?: () => void;
+  onOpenCredits?: () => void;
+  onTriggerRagdoll?: () => void;
+  onDemolishToRubble?: () => void;
+  accountProfile?: UserAccountProfile | null;
 }
 
 type TabType =
@@ -144,6 +153,11 @@ export const BottomDock: React.FC<BottomDockProps> = ({
   onGoogleSignIn,
   onGoogleSignOut,
   onNotify,
+  onOpenAuth,
+  onOpenCredits,
+  onTriggerRagdoll,
+  onDemolishToRubble,
+  accountProfile,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('none');
   const [cloudSubTab, setCloudSubTab] = useState<CloudSubTab>('saves');
@@ -465,12 +479,32 @@ export const BottomDock: React.FC<BottomDockProps> = ({
             <span className="font-mono text-[10px] sm:text-[11px] font-bold text-amber-500 truncate">
               {UNIFIED_PROJECT_NAME.toUpperCase()}
             </span>
-            <span className="hidden md:inline text-neutral-600">|</span>
-            <span className="hidden md:inline text-[10px] text-neutral-400">
-              8K Unified Character · Expanding World Map [M] · Missions &amp; Directives
+            <span className="hidden sm:inline text-neutral-600">|</span>
+            <span className="hidden sm:inline text-[10px] font-semibold text-amber-300">
+              Creator: {CREATOR_NAME}
             </span>
           </div>
           <div className="flex items-center gap-1.5">
+            {onOpenAuth && (
+              <button
+                onClick={onOpenAuth}
+                className="flex items-center gap-1 text-[10px] text-emerald-300 hover:text-white px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800"
+              >
+                <UserCheck className="w-3 h-3 text-emerald-400" />
+                <span>
+                  {accountProfile ? accountProfile.displayName : 'Sign Up / Log In'}
+                </span>
+              </button>
+            )}
+            {onOpenCredits && (
+              <button
+                onClick={onOpenCredits}
+                className="flex items-center gap-1 text-[10px] text-amber-300 hover:text-white px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800"
+              >
+                <Award className="w-3 h-3 text-amber-400" />
+                <span>Credits</span>
+              </button>
+            )}
             {activeTab !== 'none' && (
               <button
                 onClick={() => setActiveTab('none')}
@@ -820,12 +854,45 @@ export const BottomDock: React.FC<BottomDockProps> = ({
               </div>
             )}
 
-            {/* BASE BUILDING TAB */}
+            {/* BASE BUILDING & DEBRIS / RUBBLE PHYSICS TAB */}
             {activeTab === 'building' && (
               <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-400 mb-2">
-                  Modular Outpost Construction
-                </h3>
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+                      Modular Outpost Construction &amp; Structural Debris Physics
+                    </h3>
+                    <p className="text-[11px] text-neutral-500">
+                      Destroyed structures burst into flying debris and leave persistent 3D rubble piles you can salvage with [E].
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {onDemolishToRubble && (
+                      <button
+                        onClick={() => {
+                          onDemolishToRubble();
+                          setActiveTab('none');
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-rose-900/60 hover:bg-rose-800 border border-rose-500/50 text-xs font-bold text-rose-200 flex items-center gap-1.5"
+                      >
+                        <Flame className="w-3.5 h-3.5 text-rose-400" />
+                        <span>Demolish Nearest to Rubble [X]</span>
+                      </button>
+                    )}
+                    {onTriggerRagdoll && (
+                      <button
+                        onClick={() => {
+                          onTriggerRagdoll();
+                          setActiveTab('none');
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-amber-900/50 hover:bg-amber-800 border border-amber-500/50 text-xs font-bold text-amber-200 flex items-center gap-1.5"
+                      >
+                        <Zap className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Test Ragdoll Impulse [K]</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
                   {[
                     {
