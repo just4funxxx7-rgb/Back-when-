@@ -1,0 +1,18 @@
+{
+  "appId": "com.newdawnindustries.aetheria",
+  "appName": "Aetheria: Outcast Lands",
+  "bundledWebRuntime": false,
+  "webDir": "dist",
+  "company": "New Dawn Industries",
+  "creator": "Tyler Suggett",
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false,
+    "backgroundColor": "#050505"
+  },
+  "server": {
+    "androidScheme": "https",
+    "cleartext": false
+  }
+}

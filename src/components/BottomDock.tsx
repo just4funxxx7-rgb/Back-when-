@@ -480,8 +480,8 @@ export const BottomDock: React.FC<BottomDockProps> = ({
               {UNIFIED_PROJECT_NAME.toUpperCase()}
             </span>
             <span className="hidden sm:inline text-neutral-600">|</span>
-            <span className="hidden sm:inline text-[10px] font-semibold text-amber-300">
-              Creator: {CREATOR_NAME}
+            <span className="hidden sm:inline text-[10px] font-semibold text-neutral-300">
+              New Dawn Industries · Swipe Screen to Pan View
             </span>
           </div>
           <div className="flex items-center gap-1.5">

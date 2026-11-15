@@ -715,12 +715,11 @@ export default function App() {
 
             <button
               onClick={() => setIsCreditsModalOpen(true)}
-              title={`Created by ${CREATOR_NAME}`}
+              title="Official Credits — New Dawn Industries"
               className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-950/60 hover:bg-amber-900/60 text-[10px] font-bold text-amber-300 border border-amber-500/40"
             >
               <Award className="w-3 h-3 text-amber-400" />
-              <span className="hidden md:inline">Creator: {CREATOR_NAME}</span>
-              <span className="md:hidden">Credits</span>
+              <span>Credits</span>
             </button>
           </div>
 

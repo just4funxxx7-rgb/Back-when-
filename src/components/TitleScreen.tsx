@@ -9,9 +9,11 @@ import {
   UserCheck,
   UserPlus,
   BookOpen,
+  Download,
+  Building2,
 } from 'lucide-react';
 import { UserAccountProfile } from '../types/game';
-import { CREATOR_NAME } from '../lib/firebase';
+import { COMPANY_NAME } from '../lib/firebase';
 
 interface TitleScreenProps {
   onStartGame: () => void;
@@ -41,15 +43,25 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       {/* Top Bar */}
       <div className="flex flex-wrap items-center justify-between gap-2 pointer-events-auto">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="px-2.5 py-1 rounded bg-amber-600/20 border border-amber-500/40 text-amber-300 text-xs font-mono font-bold uppercase tracking-wider">
-            v2.6 · 8K Engine · Ragdoll &amp; Debris Physics
+          <span className="px-2.5 py-1 rounded bg-amber-600/20 border border-amber-500/40 text-amber-300 text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1.5">
+            <Building2 className="w-3.5 h-3.5 text-amber-400" />
+            <span>{COMPANY_NAME}</span>
           </span>
-          <span className="px-2.5 py-1 rounded bg-neutral-900/90 border border-neutral-700 text-neutral-200 text-xs font-semibold">
-            Created by <strong className="text-amber-400">{CREATOR_NAME}</strong>
+          <span className="px-2.5 py-1 rounded bg-neutral-900/90 border border-neutral-700 text-neutral-300 text-xs font-mono">
+            v2.7 · 8K Engine · Touch-Swipe Panning · AWS APK
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href="/api/export/apk"
+            download="aetheria-outcast-lands-aws-release.apk"
+            className="px-3 py-1.5 rounded-xl bg-emerald-950/90 hover:bg-emerald-900 text-xs font-bold text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5 transition cursor-pointer shadow-lg"
+          >
+            <Download className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Download APK (AWS)</span>
+          </a>
+
           <button
             onClick={onOpenAuth}
             className="px-3 py-1.5 rounded-xl bg-neutral-900/90 hover:bg-neutral-800 text-xs font-bold text-amber-300 border border-amber-500/40 flex items-center gap-1.5 transition cursor-pointer shadow-lg"
@@ -92,7 +104,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       {/* Center Hero Title & Primary Actions */}
       <div className="max-w-xl my-auto pointer-events-auto">
         <div className="inline-flex items-center gap-2 px-3 py-1 mb-2 rounded-full bg-amber-950/60 border border-amber-500/40 text-amber-300 text-xs font-mono uppercase tracking-widest">
-          <span>A Tyler Suggett Creation</span>
+          <span>{COMPANY_NAME} Presents</span>
         </div>
         <p className="text-xs sm:text-sm font-mono uppercase tracking-[0.28em] text-amber-400 mb-2">
           Open-World Survival · Ragdoll &amp; Structural Debris Physics
@@ -106,8 +118,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         <p className="text-xs sm:text-sm text-neutral-300 leading-relaxed mb-6 max-w-lg">
           Brave a dynamic 8K wilderness where destroyed fortifications shatter
           into persistent rubble piles, companions walk at your side with
-          evolving memories and romance, and every moral decision reshapes the
-          Outcast frontier.
+          evolving memories and romance, and swiping anywhere on screen pans your
+          360° camera view across the frontier.
         </p>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
@@ -157,13 +169,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         </div>
       </div>
 
-      {/* Bottom Controls Hint & Creator Credit */}
+      {/* Bottom Controls Hint */}
       <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-neutral-400 pointer-events-auto border-t border-white/10 pt-3">
         <span>
-          [WASD] Move · [Click/X] Shatter Structure to Rubble · [K] Ragdoll · [H] Hide HUD · [E] Interact
+          [Swipe / Drag Screen] 360° Pan View · [WASD / Stick] Move · [X] Rubble Blast · [K] Ragdoll · [H] Hide HUD
         </span>
         <span className="text-neutral-300">
-          Creator: <strong className="text-amber-400">{CREATOR_NAME}</strong> ·{' '}
+          © {COMPANY_NAME} ·{' '}
           <button
             onClick={onOpenGuide}
             className="underline hover:text-white inline-flex items-center gap-1 ml-1"

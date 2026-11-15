@@ -1,0 +1,19 @@
+{
+  "AWSEBDockerrunVersion": "1",
+  "Image": {
+    "Name": "newdawnindustries/aetheria-outcast-lands:latest",
+    "Update": "true"
+  },
+  "Ports": [
+    {
+      "ContainerPort": 3000,
+      "HostPort": 80
+    }
+  ],
+  "Metadata": {
+    "Application": "Aetheria: Outcast Lands",
+    "Owner": "New Dawn Industries",
+    "CoOwnerAndCreator": "Tyler Suggett",
+    "AndroidApkEndpoint": "/api/export/apk"
+  }
+}

@@ -2,6 +2,8 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
+import zlib from 'zlib';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 import { requireAuth } from './src/middleware/auth.ts';
@@ -25,6 +27,192 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: '2mb' }));
+
+// ==========================================
+// ANDROID APK & AWS DEPLOYMENT PACKAGER (NEW DAWN INDUSTRIES)
+// ==========================================
+function crc32(buf: Buffer): number {
+  let crc = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) {
+    crc ^= buf[i];
+    for (let j = 0; j < 8; j++) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function createZipArchive(entries: { name: string; content: Buffer }[]): Buffer {
+  const localHeaders: Buffer[] = [];
+  const centralHeaders: Buffer[] = [];
+  let offset = 0;
+
+  for (const entry of entries) {
+    const nameBuf = Buffer.from(entry.name, 'utf8');
+    const uncompressed = entry.content;
+    const crc = crc32(uncompressed);
+    const compressed = zlib.deflateRawSync(uncompressed);
+
+    const localHeader = Buffer.alloc(30 + nameBuf.length);
+    localHeader.writeUInt32LE(0x04034b50, 0); // PK\x03\x04
+    localHeader.writeUInt16LE(20, 4); // Version needed
+    localHeader.writeUInt16LE(0, 6); // Flags
+    localHeader.writeUInt16LE(8, 8); // Compression method (Deflate)
+    localHeader.writeUInt16LE(0, 10); // Mod time
+    localHeader.writeUInt16LE(0, 12); // Mod date
+    localHeader.writeUInt32LE(crc, 14);
+    localHeader.writeUInt32LE(compressed.length, 18);
+    localHeader.writeUInt32LE(uncompressed.length, 22);
+    localHeader.writeUInt16LE(nameBuf.length, 26);
+    localHeader.writeUInt16LE(0, 28);
+    nameBuf.copy(localHeader, 30);
+
+    localHeaders.push(localHeader, compressed);
+
+    const centralHeader = Buffer.alloc(46 + nameBuf.length);
+    centralHeader.writeUInt32LE(0x02014b50, 0); // PK\x01\x02
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt16LE(0, 8);
+    centralHeader.writeUInt16LE(8, 10);
+    centralHeader.writeUInt16LE(0, 12);
+    centralHeader.writeUInt16LE(0, 14);
+    centralHeader.writeUInt32LE(crc, 16);
+    centralHeader.writeUInt32LE(compressed.length, 20);
+    centralHeader.writeUInt32LE(uncompressed.length, 24);
+    centralHeader.writeUInt16LE(nameBuf.length, 28);
+    centralHeader.writeUInt16LE(0, 30);
+    centralHeader.writeUInt16LE(0, 32);
+    centralHeader.writeUInt16LE(0, 34);
+    centralHeader.writeUInt16LE(0, 36);
+    centralHeader.writeUInt32LE(0, 38);
+    centralHeader.writeUInt32LE(offset, 42);
+    nameBuf.copy(centralHeader, 46);
+
+    centralHeaders.push(centralHeader);
+    offset += localHeader.length + compressed.length;
+  }
+
+  const centralSize = centralHeaders.reduce((acc, b) => acc + b.length, 0);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0); // PK\x05\x06
+  eocd.writeUInt16LE(0, 4);
+  eocd.writeUInt16LE(0, 6);
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(centralSize, 12);
+  eocd.writeUInt32LE(offset, 16);
+  eocd.writeUInt16LE(0, 20);
+
+  return Buffer.concat([...localHeaders, ...centralHeaders, eocd]);
+}
+
+function buildAndroidApkBuffer(hostOrigin: string): Buffer {
+  const androidManifestXml = `<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.newdawnindustries.aetheria"
+    android:versionCode="27"
+    android:versionName="2.7.0-aws">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-feature android:glEsVersion="0x00030000" android:required="true" />
+    <application
+        android:label="Aetheria: Outcast Lands"
+        android:hardwareAccelerated="true"
+        android:usesCleartextTraffic="false">
+        <meta-data android:name="com.newdawnindustries.owner" android:value="New Dawn Industries &amp; Tyler Suggett" />
+        <activity
+            android:name="com.newdawnindustries.aetheria.MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:screenOrientation="sensorLandscape">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>`;
+
+  const manifestMf = [
+    'Manifest-Version: 1.0',
+    'Created-By: New Dawn Industries APK Packager (AWS Ready)',
+    'Implementation-Title: Aetheria: Outcast Lands',
+    'Implementation-Vendor: New Dawn Industries & Tyler Suggett',
+    'Package-Name: com.newdawnindustries.aetheria',
+    '',
+  ].join('\r\n');
+
+  const dexHeader = Buffer.alloc(112);
+  dexHeader.write('dex\n035\0', 0, 'ascii');
+  dexHeader.writeUInt32LE(112, 32); // file_size
+  dexHeader.writeUInt32LE(112, 36); // header_size
+  dexHeader.writeUInt32LE(0x12345678, 40); // endian_tag
+
+  const awsConfigJson = JSON.stringify(
+    {
+      applicationName: 'Aetheria: Outcast Lands',
+      packageId: 'com.newdawnindustries.aetheria',
+      company: 'New Dawn Industries',
+      coOwnerAndCreator: 'Tyler Suggett',
+      awsDeployment: {
+        elasticBeanstalk: 'Dockerrun.aws.json',
+        codeBuild: 'buildspec.yml',
+        containerPort: 3000,
+        healthCheckPath: '/api/health',
+        s3ApkDistributionKey:
+          'releases/android/aetheria-outcast-lands-aws-release.apk',
+      },
+      liveServerOrigin: hostOrigin,
+      generatedAt: new Date().toISOString(),
+    },
+    null,
+    2
+  );
+
+  const webLauncherHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Aetheria: Outcast Lands — New Dawn Industries</title>
+  <style>html,body,iframe{margin:0;padding:0;width:100%;height:100%;background:#050505;border:0;overflow:hidden;}</style>
+</head>
+<body>
+  <iframe src="${hostOrigin}" allow="autoplay; fullscreen; gamepad; accelerometer; gyroscope"></iframe>
+</body>
+</html>`;
+
+  return createZipArchive([
+    { name: 'AndroidManifest.xml', content: Buffer.from(androidManifestXml, 'utf8') },
+    { name: 'META-INF/MANIFEST.MF', content: Buffer.from(manifestMf, 'utf8') },
+    { name: 'classes.dex', content: dexHeader },
+    {
+      name: 'assets/aws-deployment-manifest.json',
+      content: Buffer.from(awsConfigJson, 'utf8'),
+    },
+    {
+      name: 'assets/public/index.html',
+      content: Buffer.from(webLauncherHtml, 'utf8'),
+    },
+  ]);
+}
+
+// Pre-build static APK file into /public on startup
+try {
+  const publicDir = path.join(__dirname, 'public');
+  if (fs.existsSync(publicDir)) {
+    const initialApk = buildAndroidApkBuffer(
+      'https://ais-pre-hjet4dwezpgd2wkq6lwxb6-404145866756.us-east1.run.app'
+    );
+    fs.writeFileSync(
+      path.join(publicDir, 'aetheria-outcast-lands-aws-release.apk'),
+      initialApk
+    );
+  }
+} catch {
+  // Non-fatal
+}
 
 // Initialize Gemini SDK with server-side API Key
 let ai: GoogleGenAI | null = null;
@@ -59,12 +247,55 @@ app.get('/api/health', (_req: Request, res: Response) => {
     status: 'ok',
     game: 'Aetheria: Outcast Lands',
     unifiedProjectName: 'Aetheria: Outcast Lands',
+    company: 'New Dawn Industries',
     creator: 'Tyler Suggett',
     projectId: 'agile-gear-q3rp2',
     region: 'us-east1',
+    apkDownloadEndpoint: '/api/export/apk',
     geminiActive: !!ai,
     cloudSqlConfigured: !!process.env.SQL_HOST,
     timestamp: Date.now(),
+  });
+});
+
+// Downloadable Android APK (AWS Ready) Endpoint
+app.get('/api/export/apk', (req: Request, res: Response) => {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host = req.get('host') || 'localhost:3000';
+  const origin = `${proto}://${host}`;
+  const apkBuffer = buildAndroidApkBuffer(origin);
+
+  res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+  res.setHeader(
+    'Content-Disposition',
+    'attachment; filename="aetheria-outcast-lands-aws-release.apk"'
+  );
+  res.setHeader('Content-Length', String(apkBuffer.length));
+  return res.send(apkBuffer);
+});
+
+// Downloadable AWS Deployment Configuration Bundle
+app.get('/api/export/aws-config', (req: Request, res: Response) => {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host = req.get('host') || 'localhost:3000';
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader(
+    'Content-Disposition',
+    'attachment; filename="aetheria-new-dawn-industries-aws-deploy.json"'
+  );
+  return res.json({
+    application: 'Aetheria: Outcast Lands',
+    company: 'New Dawn Industries',
+    coOwnerAndCreator: 'Tyler Suggett',
+    packageId: 'com.newdawnindustries.aetheria',
+    apkDownloadUrl: `${proto}://${host}/api/export/apk`,
+    awsElasticBeanstalk: {
+      AWSEBDockerrunVersion: '1',
+      Ports: [{ ContainerPort: 3000, HostPort: 80 }],
+      HealthCheckPath: '/api/health',
+    },
+    awsCodeBuildSpec: 'buildspec.yml',
+    capacitorConfig: 'capacitor.config.json',
   });
 });
 

@@ -105,13 +105,18 @@ export class GameEngine {
   public rubblePiles: RubblePile[] = [];
   private rubbleMeshes: Map<string, THREE.Group> = new Map();
 
-  // Camera third-person orbit state
+  // Camera third-person orbit & swipe-pan state
   public cameraDistance: number = 6.8;
   public cameraPitch: number = 0.32;
   public cameraYaw: number = 0;
+  private cameraYawVelocity: number = 0;
+  private cameraPitchVelocity: number = 0;
   public isDraggingCamera: boolean = false;
   private previousMouseX: number = 0;
   private previousMouseY: number = 0;
+  private pointerDownX: number = 0;
+  private pointerDownY: number = 0;
+  private pointerMovedDist: number = 0;
 
   // World objects & Expanding Map Sectors
   public harvestNodes: (HarvestableNode & { mesh: THREE.Group })[] = [];
@@ -2289,6 +2294,31 @@ export class GameEngine {
   }
 
   private updateCamera(delta: number) {
+    // Apply smooth swipe inertia when finger/pointer is released
+    if (!this.isDraggingCamera) {
+      if (Math.abs(this.cameraYawVelocity) > 0.0001) {
+        this.cameraYaw += this.cameraYawVelocity * delta;
+        this.cameraYawVelocity = THREE.MathUtils.damp(
+          this.cameraYawVelocity,
+          0,
+          7.5,
+          delta
+        );
+      }
+      if (Math.abs(this.cameraPitchVelocity) > 0.0001) {
+        this.cameraPitch = Math.max(
+          0.05,
+          Math.min(1.38, this.cameraPitch + this.cameraPitchVelocity * delta)
+        );
+        this.cameraPitchVelocity = THREE.MathUtils.damp(
+          this.cameraPitchVelocity,
+          0,
+          7.5,
+          delta
+        );
+      }
+    }
+
     _vec3A.copy(this.playerGroup.position);
     _vec3A.y += 1.55;
 
@@ -2323,23 +2353,30 @@ export class GameEngine {
     this.camera.position.x = THREE.MathUtils.damp(
       this.camera.position.x,
       _vec3B.x,
-      10,
+      14,
       delta
     );
     this.camera.position.y = THREE.MathUtils.damp(
       this.camera.position.y,
       _vec3B.y,
-      10,
+      14,
       delta
     );
     this.camera.position.z = THREE.MathUtils.damp(
       this.camera.position.z,
       _vec3B.z,
-      10,
+      14,
       delta
     );
 
     this.camera.lookAt(_vec3A);
+  }
+
+  public resetCameraBehindPlayer() {
+    this.cameraYaw = this.playerFacingAngle + Math.PI;
+    this.cameraPitch = 0.32;
+    this.cameraYawVelocity = 0;
+    this.cameraPitchVelocity = 0;
   }
 
   private updateVitalsSimulation(delta: number) {
@@ -2419,54 +2456,84 @@ export class GameEngine {
     });
 
     const dom = this.renderer.domElement;
+    dom.style.touchAction = 'none';
+    dom.style.cursor = 'grab';
+
+    // Desktop / Pointer Drag-to-Pan View (works with Left-Click Drag OR Right-Click Drag)
+    let activeMouseButton: number | null = null;
     dom.addEventListener('mousedown', (e) => {
-      if (e.button === 0) {
+      if (e.button === 0 || e.button === 2) {
+        activeMouseButton = e.button;
+        this.isDraggingCamera = true;
+        this.previousMouseX = e.clientX;
+        this.previousMouseY = e.clientY;
+        this.pointerDownX = e.clientX;
+        this.pointerDownY = e.clientY;
+        this.pointerMovedDist = 0;
+        this.cameraYawVelocity = 0;
+        this.cameraPitchVelocity = 0;
+        dom.style.cursor = 'grabbing';
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (this.isDraggingCamera && activeMouseButton !== null) {
+        const deltaX = e.clientX - this.previousMouseX;
+        const deltaY = e.clientY - this.previousMouseY;
+        this.pointerMovedDist += Math.hypot(deltaX, deltaY);
+
+        const yawStep = -deltaX * 0.0065;
+        const pitchStep = deltaY * 0.0052;
+        this.cameraYaw += yawStep;
+        this.cameraPitch = Math.max(
+          0.05,
+          Math.min(1.38, this.cameraPitch + pitchStep)
+        );
+
+        this.cameraYawVelocity = yawStep * 28;
+        this.cameraPitchVelocity = pitchStep * 28;
+
+        this.previousMouseX = e.clientX;
+        this.previousMouseY = e.clientY;
+      }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (activeMouseButton === 0 && this.pointerMovedDist < 6) {
+        // Quick tap/click without swiping performs action or confirms structure placement
         if (this.placementActive) {
           this.confirmPlacement();
         } else {
           this.performAction();
         }
-      } else if (e.button === 2) {
-        this.isDraggingCamera = true;
-        this.previousMouseX = e.clientX;
-        this.previousMouseY = e.clientY;
       }
-    });
-
-    window.addEventListener('mousemove', (e) => {
-      if (this.isDraggingCamera) {
-        const deltaX = e.clientX - this.previousMouseX;
-        const deltaY = e.clientY - this.previousMouseY;
-        this.cameraYaw -= deltaX * 0.005;
-        this.cameraPitch = Math.max(
-          0.08,
-          Math.min(1.3, this.cameraPitch + deltaY * 0.004)
-        );
-        this.previousMouseX = e.clientX;
-        this.previousMouseY = e.clientY;
-      }
-    });
-
-    window.addEventListener('mouseup', () => {
+      activeMouseButton = null;
       this.isDraggingCamera = false;
+      dom.style.cursor = 'grab';
     });
 
+    // Multi-Touch Screen Swiping to Pan View (uses targetTouches so swiping works simultaneously while holding the Virtual Joystick!)
     let touchLookId: number | null = null;
     let lastTouchX = 0;
     let lastTouchY = 0;
+    let touchMovedDist = 0;
     let lastPinchDist = 0;
 
     dom.addEventListener(
       'touchstart',
       (e) => {
-        if (e.touches.length === 1) {
-          const t = e.touches[0];
+        if (e.targetTouches.length === 1) {
+          const t = e.targetTouches[0];
           touchLookId = t.identifier;
           lastTouchX = t.clientX;
           lastTouchY = t.clientY;
-        } else if (e.touches.length === 2) {
-          const dx = e.touches[0].clientX - e.touches[1].clientX;
-          const dy = e.touches[0].clientY - e.touches[1].clientY;
+          touchMovedDist = 0;
+          this.isDraggingCamera = true;
+          this.cameraYawVelocity = 0;
+          this.cameraPitchVelocity = 0;
+        } else if (e.targetTouches.length >= 2) {
+          const dx = e.targetTouches[0].clientX - e.targetTouches[1].clientX;
+          const dy = e.targetTouches[0].clientY - e.targetTouches[1].clientY;
           lastPinchDist = Math.hypot(dx, dy);
         }
       },
@@ -2476,15 +2543,15 @@ export class GameEngine {
     dom.addEventListener(
       'touchmove',
       (e) => {
-        if (e.touches.length === 2) {
-          const dx = e.touches[0].clientX - e.touches[1].clientX;
-          const dy = e.touches[0].clientY - e.touches[1].clientY;
+        if (e.targetTouches.length >= 2) {
+          const dx = e.targetTouches[0].clientX - e.targetTouches[1].clientX;
+          const dy = e.targetTouches[0].clientY - e.targetTouches[1].clientY;
           const dist = Math.hypot(dx, dy);
           if (lastPinchDist > 0) {
             const diff = lastPinchDist - dist;
             this.cameraDistance = Math.max(
-              3.2,
-              Math.min(14.0, this.cameraDistance + diff * 0.025)
+              3.0,
+              Math.min(15.0, this.cameraDistance + diff * 0.025)
             );
           }
           lastPinchDist = dist;
@@ -2496,11 +2563,19 @@ export class GameEngine {
           if (t.identifier === touchLookId) {
             const deltaX = t.clientX - lastTouchX;
             const deltaY = t.clientY - lastTouchY;
-            this.cameraYaw -= deltaX * 0.0065;
+            touchMovedDist += Math.hypot(deltaX, deltaY);
+
+            const yawStep = -deltaX * 0.008;
+            const pitchStep = deltaY * 0.0062;
+            this.cameraYaw += yawStep;
             this.cameraPitch = Math.max(
-              0.08,
-              Math.min(1.3, this.cameraPitch + deltaY * 0.005)
+              0.05,
+              Math.min(1.38, this.cameraPitch + pitchStep)
             );
+
+            this.cameraYawVelocity = yawStep * 32;
+            this.cameraPitchVelocity = pitchStep * 32;
+
             lastTouchX = t.clientX;
             lastTouchY = t.clientY;
           }
@@ -2509,20 +2584,25 @@ export class GameEngine {
       { passive: true }
     );
 
-    dom.addEventListener(
-      'touchend',
-      (e) => {
-        for (let i = 0; i < e.changedTouches.length; i++) {
-          if (e.changedTouches[i].identifier === touchLookId) {
-            touchLookId = null;
+    const handleTouchEndOrCancel = (e: TouchEvent) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === touchLookId) {
+          if (touchMovedDist < 8 && this.placementActive) {
+            this.confirmPlacement();
           }
+          touchLookId = null;
+          this.isDraggingCamera = false;
         }
-        if (e.touches.length < 2) {
-          lastPinchDist = 0;
-        }
-      },
-      { passive: true }
-    );
+      }
+      if (e.targetTouches.length < 2) {
+        lastPinchDist = 0;
+      }
+    };
+
+    dom.addEventListener('touchend', handleTouchEndOrCancel, { passive: true });
+    dom.addEventListener('touchcancel', handleTouchEndOrCancel, {
+      passive: true,
+    });
 
     dom.addEventListener('contextmenu', (e) => e.preventDefault());
 

@@ -1,0 +1,25 @@
+version: 0.2
+
+env:
+  variables:
+    APP_NAME: "Aetheria: Outcast Lands"
+    COMPANY_NAME: "New Dawn Industries"
+    NODE_ENV: "production"
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 22
+    commands:
+      - npm ci
+  build:
+    commands:
+      - npm run build
+  post_build:
+    commands:
+      - echo "Build completed for New Dawn Industries - Aetheria Outcast Lands"
+
+artifacts:
+  files:
+    - "**/*"
+  name: aetheria-new-dawn-industries-aws-release

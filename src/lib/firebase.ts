@@ -30,8 +30,9 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 
-// Unified project name & Creator across platforms
+// Unified project name, Company & Creator across platforms
 export const UNIFIED_PROJECT_NAME = 'Aetheria: Outcast Lands';
+export const COMPANY_NAME = 'New Dawn Industries';
 export const CREATOR_NAME = 'Tyler Suggett';
 export const ADMIN_EMAILS = [
   'new.dawn.industries2026@gmail.com',

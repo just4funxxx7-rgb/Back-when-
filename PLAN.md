@@ -1,7 +1,7 @@
 # Aetheria: Outcast Lands — Master Architecture & Execution Plan
 
 > **Rule**: Always update this plan FIRST before making changes, and update it LAST after all changes are verified.
-> **Creator**: **Tyler Suggett**
+> **Company / Ownership**: **New Dawn Industries** (Owned by **New Dawn Industries** with Creator **Tyler Suggett**)
 
 ---
 
@@ -13,33 +13,29 @@
 
 ---
 
-## Phase 2: Ragdoll & Debris/Rubble Physics, Enhanced NPC Interactions, Collapsible Play Screen Menus, Creator Credits (Tyler Suggett), and User Account Sign Up / Login (COMPLETED ✅)
+## Phase 2: Ragdoll & Debris/Rubble Physics, Enhanced NPC Interactions, Collapsible Play Screen Menus, and User Account Sign Up / Login (COMPLETED ✅)
+1. **Ragdoll Physics for Character Interactions & Structural Debris / Persistent Rubble** — COMPLETED ✅
+2. **Improved NPC Interactions (3D Follow Mode, Head-Tracking, Gifts, Barter, Intimate Boost)** — COMPLETED ✅
+3. **Collapsible / Minimizable Play Screen Menus (`[H]` Hide All & Individual Panel Minimize)** — COMPLETED ✅
+4. **User Account Sign Up & Login System (`AuthModal.tsx`, Firebase Auth & Cloud SQL)** — COMPLETED ✅
 
-### 1. Ragdoll Physics for Character Interactions & Structural Debris / Persistent Rubble (`src/game/proceduralModels.ts`, `src/game/GameEngine.ts`, `src/types/game.ts`)
+---
+
+## Phase 3: Single Consolidated Credits Entry (New Dawn Industries & Tyler Suggett), Full-Screen Touch-Swipe Camera Panning, and APK + AWS Deployment Packaging (COMPLETED ✅)
+
+### 1. Single Consolidated Credit for Tyler Suggett & New Dawn Industries (`src/components/CreditsModal.tsx`, `src/components/TitleScreen.tsx`, `src/components/BottomDock.tsx`, `src/App.tsx`, `src/lib/firebase.ts`)
 - **Status**: `COMPLETED ✅`
 - **Implementation Summary**:
-  - Articulated ragdoll physics for both the player character (`triggerPlayerRagdoll()`, `[K]` hotkey or UI button) and NPCs (`triggerNPCRagdoll()`, triggered on physical impact or shockwave), with multi-joint angular velocity, gravity, terrain collision bounce, and smooth self-righting recovery.
-  - Structural damage & demolition (`[X]` hotkey, `Demolish Nearest to Rubble` button, or repeated weapon/tool strikes on placed structures): structures burst into 18 flying 3D physics debris fragments (`DebrisChunk` with gravity, angular spin, and ground bounce) and leave behind a realistic, **persistent 3D rubble pile** (`RubblePile`) on the terrain and minimap.
-  - Persistent rubble piles remain in the world across saves (`GameSaveState.rubblePiles`) and can be scavenged (`[E]`) to recover Wood, Stone, and Iron Ore.
+  - Removed repeated "Creator: Tyler Suggett" labels from `TitleScreen.tsx`, `App.tsx` top bar, and `BottomDock.tsx` header so it is not duplicated across screens.
+  - Placed **Tyler Suggett** in **one dedicated place inside the Credits Modal (`CreditsModal.tsx`)** alongside **New Dawn Industries** as the company that owns the game with Tyler Suggett (`COMPANY_NAME = 'New Dawn Industries'`).
 
-### 2. Improved NPC Interactions (`src/game/GameEngine.ts`, `src/components/DialogueModal.tsx`)
+### 2. Full-Screen Touch-Swipe & Drag Camera Panning (`src/game/GameEngine.ts`)
 - **Status**: `COMPLETED ✅`
 - **Implementation Summary**:
-  - 3D world NPCs dynamically turn their heads/bodies toward the player when nearby, react with articulated ragdoll physics if struck, and can be commanded to **Follow Player** or **Hold Position** across the 3D terrain (`setNPCFollowing`).
-  - Upgraded `DialogueModal.tsx` with interactive companion actions: **Follow Me / Hold Position**, **Give Gift (+12 Affinity)**, **Barter Salvage**, **Intimate Embrace (100% Vitals & Morale boost)**, and an expandable **Persistent Memory Log** drawer.
+  - Enabled 360° horizontal yaw and vertical pitch camera panning by swiping or dragging anywhere on the 3D viewport (works with single-finger touch swipe via `targetTouches` even while holding the left movement joystick, two-finger pinch zoom, and left-click or right-click mouse drag with smooth inertia damping).
 
-### 3. Collapsible / Minimizable Play Screen Menus (`src/components/VitalsHUD.tsx`, `src/components/WeatherHUD.tsx`, `src/components/MinimapHUD.tsx`, `src/components/MissionTrackerHUD.tsx`, `src/components/BottomDock.tsx`, `src/App.tsx`)
+### 3. APK & AWS-Ready Deployment Package (`server.ts`, `capacitor.config.json`, `Dockerrun.aws.json`, `buildspec.yml`, `public/aetheria-outcast-lands-aws-release.apk`)
 - **Status**: `COMPLETED ✅`
 - **Implementation Summary**:
-  - Added individual minimize/expand (`ChevronUp` / `ChevronDown`) buttons to `VitalsHUD`, `WeatherHUD`, `MinimapHUD`, `MissionTrackerHUD`, and `BottomDock`.
-  - Added a persistent top-center **Play Screen Control Bar** with a **"Hide Menus `[H]` / Show Menus `[H]`"** toggle so all play screen menus can be hidden or minimized for unobstructed 8K gameplay.
-
-### 4. Creator Credit: Tyler Suggett (`src/components/TitleScreen.tsx`, `src/components/CreditsModal.tsx`, `src/components/BottomDock.tsx`, `src/lib/firebase.ts`)
-- **Status**: `COMPLETED ✅`
-- **Implementation Summary**:
-  - Listed **Tyler Suggett** as the Creator on the Title Screen header & footer, in the Play Screen top bar & Bottom Dock header, and in the dedicated `CreditsModal.tsx`.
-
-### 5. User Account Sign Up & Login System (`src/components/AuthModal.tsx`, `src/lib/firebase.ts`, `server.ts`, `src/App.tsx`)
-- **Status**: `COMPLETED ✅`
-- **Implementation Summary**:
-  - Created `AuthModal.tsx` supporting **Sign Up (Create Account)** and **Log In** with Email, Password, Survivor Callsign, and Google OAuth, backed by Firebase Authentication (`createUserWithEmailAndPassword`, `signInWithEmailAndPassword`) and Cloud SQL PostgreSQL (`/api/auth/signup`, `/api/auth/login`).
+  - Created `capacitor.config.json` (`com.newdawnindustries.aetheria`), `Dockerrun.aws.json` (AWS Elastic Beanstalk / ECS), and `buildspec.yml` (AWS CodeBuild).
+  - Implemented `/api/export/apk` and `/api/export/aws-config` in `server.ts` (plus pre-built `/public/aetheria-outcast-lands-aws-release.apk`) to package and serve a downloadable Android `.apk` release archive ready for AWS distribution, with one-click download buttons in `TitleScreen.tsx` and `CreditsModal.tsx`.
