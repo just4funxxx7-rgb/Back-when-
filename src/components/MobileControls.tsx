@@ -9,6 +9,7 @@ interface MobileControlsProps {
   onRollPress?: () => void;
   onSprintToggle: (sprint: boolean) => void;
   isSprinting: boolean;
+  visible?: boolean;
 }
 
 export const MobileControls: React.FC<MobileControlsProps> = ({
@@ -19,25 +20,45 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
   onRollPress,
   onSprintToggle,
   isSprinting,
+  visible = true,
 }) => {
   const joystickRef = useRef<HTMLDivElement>(null);
+  const activeTouchIdRef = useRef<number | null>(null);
   const [knobPos, setKnobPos] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
 
+  if (!visible) return null;
+
   const handleTouchStart = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    const touch = e.changedTouches[0];
+    activeTouchIdRef.current = touch.identifier;
     setIsDragging(true);
-    updateKnob(e.touches[0]);
+    updateKnob(touch);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
+    e.stopPropagation();
     if (!isDragging) return;
-    updateKnob(e.touches[0]);
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === activeTouchIdRef.current) {
+        updateKnob(e.changedTouches[i]);
+        break;
+      }
+    }
   };
 
-  const handleTouchEnd = () => {
-    setIsDragging(false);
-    setKnobPos({ x: 0, y: 0 });
-    onJoystickMove({ x: 0, y: 0 });
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === activeTouchIdRef.current) {
+        activeTouchIdRef.current = null;
+        setIsDragging(false);
+        setKnobPos({ x: 0, y: 0 });
+        onJoystickMove({ x: 0, y: 0 });
+        break;
+      }
+    }
   };
 
   const updateKnob = (touch: React.Touch) => {
@@ -48,7 +69,7 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
 
     let dx = touch.clientX - centerX;
     let dy = touch.clientY - centerY;
-    const maxRadius = rect.width / 2;
+    const maxRadius = rect.width / 2 - 8;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
     if (dist > maxRadius) {
@@ -61,69 +82,94 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
   };
 
   return (
-    <div className="absolute inset-0 pointer-events-none select-none z-20 flex justify-between p-6 items-end pb-24 md:hidden">
-      {/* Virtual Analog Joystick (Bottom Left) */}
-      <div
-        ref={joystickRef}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        className="w-28 h-28 rounded-full bg-neutral-900/60 border-2 border-neutral-700/80 pointer-events-auto relative flex items-center justify-center touch-none"
-      >
+    <div className="fixed inset-x-0 bottom-28 sm:bottom-24 pointer-events-none select-none z-20 flex justify-between items-end px-4 sm:px-6 lg:hidden">
+      {/* Left Thumb: Virtual Analog Stick */}
+      <div className="flex flex-col items-center gap-1.5 pointer-events-auto">
         <div
-          className="w-12 h-12 rounded-full bg-amber-500/80 shadow-lg border border-amber-300 pointer-events-none transition-transform"
-          style={{ transform: `translate(${knobPos.x}px, ${knobPos.y}px)` }}
-        />
+          ref={joystickRef}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchEnd}
+          className={`w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-neutral-950/75 border-2 ${
+            isDragging ? 'border-amber-400/90' : 'border-neutral-700/80'
+          } relative flex items-center justify-center touch-none shadow-2xl`}
+        >
+          {/* Subtle Cardinal Crosshair Marks */}
+          <div className="absolute inset-3 rounded-full border border-neutral-800/70 pointer-events-none" />
+          <div
+            className={`w-12 h-12 rounded-full ${
+              isSprinting
+                ? 'bg-emerald-500 border-emerald-300'
+                : 'bg-amber-500/90 border-amber-200'
+            } shadow-xl border-2 pointer-events-none flex items-center justify-center`}
+            style={{ transform: `translate(${knobPos.x}px, ${knobPos.y}px)` }}
+          >
+            <div className="w-3 h-3 rounded-full bg-white/80" />
+          </div>
+        </div>
+        <span className="text-[9px] font-mono uppercase tracking-wider text-neutral-400 bg-neutral-950/80 px-2 py-0.5 rounded">
+          Move Stick
+        </span>
       </div>
 
-      {/* Action Buttons Cluster (Bottom Right) */}
-      <div className="flex flex-col gap-3 pointer-events-auto items-end">
-        <div className="flex gap-2">
-          {/* Dodge Roll */}
+      {/* Right Thumb: Ergonomic Arc Action Cluster */}
+      <div
+        className="flex flex-col gap-2.5 pointer-events-auto items-end touch-manipulation"
+        onTouchStart={(e) => e.stopPropagation()}
+      >
+        {/* Upper Arc: Dodge Roll, Sprint Lock, Jump */}
+        <div className="flex items-center gap-2">
           <button
             onClick={onRollPress}
             title="Tactical Dodge Roll"
-            className="w-12 h-12 rounded-full bg-neutral-900/80 border border-sky-500/70 text-sky-300 flex items-center justify-center shadow-lg active:scale-95 transition"
+            className="w-12 h-12 rounded-full bg-neutral-950/85 border border-sky-500/80 text-sky-300 flex flex-col items-center justify-center shadow-xl active:scale-90 transition"
           >
-            <Wind className="w-5 h-5" />
+            <Wind className="w-4 h-4" />
+            <span className="text-[8px] font-mono font-bold uppercase mt-0.5">Roll</span>
           </button>
 
-          {/* Sprint Toggle */}
           <button
             onClick={() => onSprintToggle(!isSprinting)}
-            className={`w-12 h-12 rounded-full border flex items-center justify-center shadow-lg transition active:scale-95 ${
+            title="Toggle Sprint"
+            className={`w-12 h-12 rounded-full border flex flex-col items-center justify-center shadow-xl transition active:scale-90 ${
               isSprinting
-                ? 'bg-emerald-600 border-emerald-400 text-white'
-                : 'bg-neutral-900/80 border-neutral-700 text-neutral-300'
+                ? 'bg-emerald-600 border-emerald-300 text-white'
+                : 'bg-neutral-950/85 border-neutral-700 text-neutral-300'
             }`}
           >
-            <Zap className="w-5 h-5" />
+            <Zap className="w-4 h-4" />
+            <span className="text-[8px] font-mono font-bold uppercase mt-0.5">Run</span>
           </button>
 
-          {/* Jump */}
           <button
             onClick={onJumpPress}
-            className="w-12 h-12 rounded-full bg-neutral-900/80 border border-neutral-700 text-neutral-200 flex items-center justify-center shadow-lg active:scale-95 transition"
+            title="Jump"
+            className="w-12 h-12 rounded-full bg-neutral-950/85 border border-neutral-600 text-neutral-100 flex flex-col items-center justify-center shadow-xl active:scale-90 transition"
           >
-            <ArrowUp className="w-5 h-5" />
+            <ArrowUp className="w-4 h-4" />
+            <span className="text-[8px] font-mono font-bold uppercase mt-0.5">Jump</span>
           </button>
         </div>
 
-        <div className="flex gap-2">
-          {/* Interact */}
+        {/* Lower Primary Row: Interact + Primary Harvest/Strike */}
+        <div className="flex items-center gap-2.5">
           <button
             onClick={onInteractPress}
-            className="w-13 h-13 rounded-full bg-neutral-900/90 border border-amber-500/80 text-amber-300 flex items-center justify-center shadow-xl active:scale-95 transition font-bold text-xs"
+            title="Interact / Talk / Rest"
+            className="w-14 h-14 rounded-full bg-neutral-950/90 border-2 border-amber-500/80 text-amber-300 flex flex-col items-center justify-center shadow-2xl active:scale-90 transition"
           >
-            <Hand className="w-6 h-6" />
+            <Hand className="w-5 h-5" />
+            <span className="text-[9px] font-mono font-bold uppercase mt-0.5">Use</span>
           </button>
 
-          {/* Attack / Chop / Action */}
           <button
             onClick={onActionPress}
-            className="w-14 h-14 rounded-full bg-amber-600 border border-amber-400 text-white flex items-center justify-center shadow-xl active:scale-95 transition"
+            title="Harvest / Strike"
+            className="w-16 h-16 rounded-full bg-amber-600 active:bg-amber-500 border-2 border-amber-300 text-neutral-950 flex flex-col items-center justify-center shadow-2xl active:scale-90 transition"
           >
-            <Axe className="w-7 h-7" />
+            <Axe className="w-6 h-6 stroke-[2.2]" />
+            <span className="text-[9px] font-mono font-black uppercase mt-0.5">Strike</span>
           </button>
         </div>
       </div>

@@ -1,8 +1,20 @@
-import express, { Request, Response } from 'express';
+import express from 'express';
+import type { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
+import { requireAuth } from './src/middleware/auth.ts';
+import type { AuthRequest } from './src/middleware/auth.ts';
+import {
+  getOrCreateUser,
+  saveUserProgressToSql,
+  getUserProgressFromSql,
+  createExpeditionLogInSql,
+  getExpeditionLogsForUser,
+  getAllUsersForAdmin,
+} from './src/db/users.ts';
+import { isEmailAdmin } from './src/lib/firebase-admin.ts';
 
 dotenv.config();
 
@@ -12,7 +24,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 
 // Initialize Gemini SDK with server-side API Key
 let ai: GoogleGenAI | null = null;
@@ -27,7 +39,7 @@ if (process.env.GEMINI_API_KEY) {
   });
 }
 
-// In-memory cloud save storage for cross-platform progression
+// In-memory cloud save fallback for unauthenticated sessions
 const cloudSaves: Record<string, any> = {};
 
 // Health check
@@ -35,12 +47,131 @@ app.get('/api/health', (_req: Request, res: Response) => {
   res.json({
     status: 'ok',
     game: 'Aetheria: Outcast Lands',
+    unifiedProjectName: 'Aetheria: Outcast Lands',
+    projectId: 'agile-gear-q3rp2',
+    region: 'us-east1',
     geminiActive: !!ai,
+    cloudSqlConfigured: !!process.env.SQL_HOST,
     timestamp: Date.now(),
   });
 });
 
-// Cloud save endpoints
+// ==========================================
+// CLOUD SQL (POSTGRESQL) + FIREBASE AUTH API
+// ==========================================
+
+// 1. Sync user profile & admin role in Cloud SQL
+app.post('/api/sql/sync-user', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const uid = req.user!.uid;
+    const email = req.user!.email || 'unknown@aetheria.local';
+    const displayName = req.body?.displayName || req.user!.name;
+    const dbUser = await getOrCreateUser(uid, email, displayName);
+    res.json({
+      success: true,
+      user: dbUser,
+      isAdmin: dbUser.role === 'admin' || isEmailAdmin(email),
+      unifiedProjectName: 'Aetheria: Outcast Lands',
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Internal server error',
+    });
+  }
+});
+
+// 2. Save player progression to Cloud SQL
+app.post('/api/sql/cloud-save', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const uid = req.user!.uid;
+    const email = req.user!.email || 'unknown@aetheria.local';
+    await getOrCreateUser(uid, email, req.user!.name);
+
+    const { level = 1, moralKarma = 0, dayCount = 1, savePayloadJson = '{}' } = req.body;
+    const saved = await saveUserProgressToSql(
+      uid,
+      Number(level),
+      Number(moralKarma),
+      Number(dayCount),
+      typeof savePayloadJson === 'string' ? savePayloadJson : JSON.stringify(savePayloadJson)
+    );
+    res.json({ success: true, data: saved });
+  } catch (err) {
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Internal server error',
+    });
+  }
+});
+
+// 3. Load player progression from Cloud SQL
+app.get('/api/sql/cloud-save', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const uid = req.user!.uid;
+    const saved = await getUserProgressFromSql(uid);
+    res.json({ success: true, data: saved });
+  } catch (err) {
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Internal server error',
+    });
+  }
+});
+
+// 4. Record Google Docs Expedition Chronicle in Cloud SQL
+app.post('/api/sql/expedition-log', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const uid = req.user!.uid;
+    const email = req.user!.email || 'unknown@aetheria.local';
+    await getOrCreateUser(uid, email, req.user!.name);
+
+    const { title, summary, googleDocId } = req.body;
+    if (!title || !summary) {
+      return res.status(400).json({ error: 'Title and summary are required.' });
+    }
+    const logEntry = await createExpeditionLogInSql(uid, title, summary, googleDocId);
+    res.json({ success: true, data: logEntry });
+  } catch (err) {
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Internal server error',
+    });
+  }
+});
+
+// 5. List user's Expedition Chronicles from Cloud SQL
+app.get('/api/sql/expedition-log', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const uid = req.user!.uid;
+    const logs = await getExpeditionLogsForUser(uid);
+    res.json({ success: true, data: logs });
+  } catch (err) {
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Internal server error',
+    });
+  }
+});
+
+// 6. Admin Directory endpoint (restricted to project admins)
+app.get('/api/sql/admin/users', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const email = req.user!.email || '';
+    if (!isEmailAdmin(email)) {
+      return res.status(403).json({ error: 'Forbidden: Project Admin privileges required.' });
+    }
+    const allUsers = await getAllUsersForAdmin();
+    res.json({
+      success: true,
+      unifiedProjectName: 'Aetheria: Outcast Lands',
+      projectId: 'agile-gear-q3rp2',
+      region: 'us-east1',
+      users: allUsers,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Internal server error',
+    });
+  }
+});
+
+// Fallback local/guest cloud save endpoints
 app.get('/api/cloud-save/:userId', (req: Request, res: Response) => {
   const { userId } = req.params;
   const save = cloudSaves[userId] || null;

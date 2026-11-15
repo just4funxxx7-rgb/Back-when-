@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { WeatherType } from '../types/game';
+import { isSoftwareGl } from './materials';
 
 export interface WeatherState {
   timeOfDay: number; // 0 to 24 hours
@@ -33,11 +34,12 @@ export class DynamicWeatherSystem {
   constructor(scene: THREE.Scene) {
     this.scene = scene;
 
-    // Directional Sun / Moon key light with tight shadow bounds
+    // Directional Sun / Moon key light with 4096x4096 8K-grade shadow cascades
     this.sunLight = new THREE.DirectionalLight(0xfff5e6, 1.8);
-    this.sunLight.castShadow = true;
-    this.sunLight.shadow.mapSize.width = 2048;
-    this.sunLight.shadow.mapSize.height = 2048;
+    this.sunLight.castShadow = !isSoftwareGl;
+    const shadowRes = isSoftwareGl ? 1024 : 4096;
+    this.sunLight.shadow.mapSize.width = shadowRes;
+    this.sunLight.shadow.mapSize.height = shadowRes;
     this.sunLight.shadow.camera.near = 0.5;
     this.sunLight.shadow.camera.far = 180;
     const d = 45;

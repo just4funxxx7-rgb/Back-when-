@@ -1,0 +1,187 @@
+{
+  "entities": {
+    "AdminRegistry": {
+      "title": "AdminRegistry",
+      "description": "Trusted administrator registry entry for project governance.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the administrator.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "grantedBy": {
+          "type": "string",
+          "description": "UID of the admin who granted access.",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "unifiedProjectName": {
+          "type": "string",
+          "description": "Unified cross-platform project identifier.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        }
+      },
+      "required": ["uid", "grantedBy", "unifiedProjectName", "createdAt"]
+    },
+    "SurvivorProfile": {
+      "title": "SurvivorProfile",
+      "description": "Public non-PII survivor profile and progression stats in Aetheria: Outcast Lands.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the survivor.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Public callsign of the survivor.",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "level": {
+          "type": "integer",
+          "description": "Current survivor rank level."
+        },
+        "moralKarma": {
+          "type": "integer",
+          "description": "Moral alignment score."
+        },
+        "dayCount": {
+          "type": "integer",
+          "description": "Days survived in the wilderness."
+        },
+        "unifiedProjectName": {
+          "type": "string",
+          "description": "Unified cross-platform project title.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "ownerId",
+        "displayName",
+        "level",
+        "moralKarma",
+        "dayCount",
+        "unifiedProjectName",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "SurvivorPrivateInfo": {
+      "title": "SurvivorPrivateInfo",
+      "description": "Isolated PII and Google Workspace synchronization metadata for a survivor.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified email address of the user.",
+          "minLength": 3,
+          "maxLength": 120
+        },
+        "lastDocId": {
+          "type": "string",
+          "description": "Last synced Google Docs Chronicle ID.",
+          "minLength": 0,
+          "maxLength": 128
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of update."
+        }
+      },
+      "required": ["ownerId", "email", "lastDocId", "updatedAt"]
+    },
+    "ExpeditionReport": {
+      "title": "ExpeditionReport",
+      "description": "Field dispatch log synced with Google Docs and Gmail.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Author Firebase Auth UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "description": "Report headline.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "summary": {
+          "type": "string",
+          "description": "Field narrative summary.",
+          "minLength": 1,
+          "maxLength": 1500
+        },
+        "status": {
+          "type": "string",
+          "enum": ["draft", "published", "archived"],
+          "description": "Publication lifecycle status."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Update server timestamp."
+        }
+      },
+      "required": ["ownerId", "title", "summary", "status", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/AdminRegistry" },
+      "description": "Administrator registry collection."
+    },
+    "/survivors/{userId}": {
+      "schema": { "$ref": "#/entities/SurvivorProfile" },
+      "description": "Public non-PII survivor profiles."
+    },
+    "/survivors/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/SurvivorPrivateInfo" },
+      "description": "PII-isolated private user metadata and Workspace document links."
+    },
+    "/expeditionReports/{reportId}": {
+      "schema": { "$ref": "#/entities/ExpeditionReport" },
+      "description": "Field expedition reports created by survivors."
+    }
+  }
+}

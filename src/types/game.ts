@@ -78,7 +78,7 @@ export interface PlacedStructure {
 
 export interface HarvestableNode {
   id: string;
-  type: 'tree_pine' | 'tree_oak' | 'tree_dead' | 'rock_stone' | 'rock_iron' | 'rock_flint' | 'herb_sage' | 'berry_bush';
+  type: 'tree_pine' | 'tree_oak' | 'tree_dead' | 'rock_stone' | 'rock_iron' | 'rock_flint' | 'herb_sage' | 'berry_bush' | 'supply_cache';
   x: number;
   y: number;
   z: number;
@@ -87,6 +87,70 @@ export interface HarvestableNode {
   respawnTime?: number;
   yieldItem: string;
   yieldCount: number;
+  sectorId?: string;
+}
+
+export interface WorldSector {
+  id: string;
+  name: string;
+  biome: 'haven' | 'timberlands' | 'ironcrag' | 'badlands' | 'frostpeak' | 'frontier';
+  centerX: number;
+  centerZ: number;
+  radius: number;
+  discovered: boolean;
+  beaconActivated: boolean;
+  description: string;
+  color: string;
+}
+
+export interface SurveyBeacon {
+  id: string;
+  sectorId: string;
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  activated: boolean;
+}
+
+export interface MapWaypoint {
+  x: number;
+  z: number;
+  label: string;
+  color: string;
+}
+
+export interface MissionObjective {
+  id: string;
+  text: string;
+  type:
+    | 'harvest'
+    | 'craft'
+    | 'build'
+    | 'talk_npc'
+    | 'discover_sector'
+    | 'activate_beacon'
+    | 'rest_campfire'
+    | 'reach_affinity';
+  targetId?: string;
+  current: number;
+  target: number;
+  done: boolean;
+  targetPos?: { x: number; z: number };
+}
+
+export interface Mission {
+  id: string;
+  title: string;
+  category: 'campaign' | 'exploration' | 'directive';
+  chapter: string;
+  description: string;
+  giver: string;
+  status: 'active' | 'completed' | 'locked';
+  objectives: MissionObjective[];
+  rewardXP: number;
+  rewardItems: { itemId: string; count: number }[];
+  targetWaypoint?: { x: number; z: number; label: string };
 }
 
 export interface NPCData {
@@ -161,6 +225,9 @@ export interface GameSaveState {
   moralHistory: MoralChoice[];
   npcs: Record<string, NPCData>;
   quests: Quest[];
+  missions?: Mission[];
+  discoveredSectors?: string[];
+  exploredCells?: string[];
   seasonPass: {
     tier: number;
     xp: number;

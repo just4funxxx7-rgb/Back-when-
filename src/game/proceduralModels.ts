@@ -1,6 +1,8 @@
 import * as THREE from 'three';
-import { gameMaterials } from './materials';
+import { gameMaterials, isSoftwareGl } from './materials';
 import { PlacedStructure } from '../types/game';
+
+const SEG = isSoftwareGl ? 12 : 28;
 
 // Helper to enable shadow casting & receiving on all group meshes
 export function setupGroupShadows(group: THREE.Group, cast = true, receive = true) {
@@ -12,77 +14,75 @@ export function setupGroupShadows(group: THREE.Group, cast = true, receive = tru
   });
 }
 
-// 1. Procedural 3-12 Part Trees
+// 1. High-Tessellation Procedural Trees (Pine, Oak, Gnarled Deadwood)
 export function createProceduralTree(type: 'pine' | 'oak' | 'dead' = 'pine'): THREE.Group {
   const tree = new THREE.Group();
 
   if (type === 'pine') {
-    // Part 1: Trunk (Tapered cylinder)
-    const trunkGeo = new THREE.CylinderGeometry(0.2, 0.45, 4.0, 8);
+    const trunkGeo = new THREE.CylinderGeometry(0.18, 0.48, 4.4, SEG);
     const trunk = new THREE.Mesh(trunkGeo, gameMaterials.woodBark);
-    trunk.position.y = 2.0;
+    trunk.position.y = 2.2;
     tree.add(trunk);
 
-    // Part 2: Buttress Roots (3 angled pods at base)
-    for (let i = 0; i < 3; i++) {
-      const angle = (i * Math.PI * 2) / 3;
-      const rootGeo = new THREE.ConeGeometry(0.18, 0.9, 5);
+    // Sculpted root flares
+    for (let i = 0; i < 4; i++) {
+      const angle = (i * Math.PI * 2) / 4;
+      const rootGeo = new THREE.ConeGeometry(0.2, 1.0, 10);
       const root = new THREE.Mesh(rootGeo, gameMaterials.woodBark);
-      root.position.set(Math.cos(angle) * 0.35, 0.35, Math.sin(angle) * 0.35);
-      root.rotation.z = Math.cos(angle) * 0.35;
-      root.rotation.x = Math.sin(angle) * 0.35;
+      root.position.set(Math.cos(angle) * 0.36, 0.38, Math.sin(angle) * 0.36);
+      root.rotation.z = Math.cos(angle) * 0.38;
+      root.rotation.x = Math.sin(angle) * 0.38;
       tree.add(root);
     }
 
-    // Parts 3-6: 4 Tiered Conical Needle Layers
+    // 5 lush layered conical needle canopies
     const tiers = [
-      { y: 2.8, r: 2.2, h: 2.0 },
-      { y: 4.2, r: 1.8, h: 1.8 },
-      { y: 5.4, r: 1.3, h: 1.6 },
-      { y: 6.5, r: 0.8, h: 1.4 },
+      { y: 2.7, r: 2.35, h: 2.1 },
+      { y: 3.9, r: 1.95, h: 1.9 },
+      { y: 5.0, r: 1.5, h: 1.7 },
+      { y: 6.0, r: 1.05, h: 1.5 },
+      { y: 6.9, r: 0.6, h: 1.2 },
     ];
 
-    tiers.forEach((tier) => {
-      const coneGeo = new THREE.ConeGeometry(tier.r, tier.h, 7);
+    tiers.forEach((tier, idx) => {
+      const coneGeo = new THREE.ConeGeometry(tier.r, tier.h, 14);
       const foliage = new THREE.Mesh(coneGeo, gameMaterials.pineNeedles);
       foliage.position.y = tier.y;
+      foliage.rotation.y = idx * 0.5;
       tree.add(foliage);
     });
   } else if (type === 'oak') {
-    // Oak Broadleaf Tree
-    const trunkGeo = new THREE.CylinderGeometry(0.35, 0.6, 3.2, 8);
+    const trunkGeo = new THREE.CylinderGeometry(0.34, 0.62, 3.4, SEG);
     const trunk = new THREE.Mesh(trunkGeo, gameMaterials.woodBark);
-    trunk.position.y = 1.6;
+    trunk.position.y = 1.7;
     tree.add(trunk);
 
-    // 4 Canopy clusters
     const canopyClusters = [
-      { x: 0, y: 3.5, z: 0, r: 1.8 },
-      { x: 0.8, y: 3.8, z: 0.5, r: 1.4 },
-      { x: -0.7, y: 3.6, z: -0.6, r: 1.3 },
-      { x: 0.2, y: 4.6, z: -0.2, r: 1.5 },
+      { x: 0, y: 3.7, z: 0, r: 1.95 },
+      { x: 0.9, y: 3.9, z: 0.55, r: 1.5 },
+      { x: -0.8, y: 3.7, z: -0.65, r: 1.45 },
+      { x: 0.25, y: 4.75, z: -0.25, r: 1.6 },
+      { x: -0.5, y: 4.3, z: 0.7, r: 1.35 },
     ];
 
     canopyClusters.forEach((c) => {
-      const leavesGeo = new THREE.DodecahedronGeometry(c.r, 1);
+      const leavesGeo = new THREE.IcosahedronGeometry(c.r, 2);
       const leaves = new THREE.Mesh(leavesGeo, gameMaterials.oakLeaves);
       leaves.position.set(c.x, c.y, c.z);
       tree.add(leaves);
     });
   } else {
-    // Deadwood / Gnarled Tree
-    const trunkGeo = new THREE.CylinderGeometry(0.18, 0.4, 3.8, 6);
+    const trunkGeo = new THREE.CylinderGeometry(0.16, 0.42, 4.0, 12);
     const trunk = new THREE.Mesh(trunkGeo, gameMaterials.woodBark);
-    trunk.position.y = 1.9;
-    trunk.rotation.z = 0.15;
+    trunk.position.y = 2.0;
+    trunk.rotation.z = 0.12;
     tree.add(trunk);
 
-    // Bare branches
     for (let i = 0; i < 4; i++) {
-      const branchGeo = new THREE.CylinderGeometry(0.06, 0.12, 1.6, 5);
+      const branchGeo = new THREE.CylinderGeometry(0.05, 0.12, 1.7, 8);
       const branch = new THREE.Mesh(branchGeo, gameMaterials.woodBark);
       const angle = (i * Math.PI) / 2;
-      branch.position.set(Math.cos(angle) * 0.4, 2.5 + i * 0.35, Math.sin(angle) * 0.4);
+      branch.position.set(Math.cos(angle) * 0.42, 2.5 + i * 0.35, Math.sin(angle) * 0.42);
       branch.rotation.z = Math.cos(angle) * 0.7;
       branch.rotation.x = Math.sin(angle) * 0.7;
       tree.add(branch);
@@ -93,7 +93,7 @@ export function createProceduralTree(type: 'pine' | 'oak' | 'dead' = 'pine'): TH
   return tree;
 }
 
-// 2. Procedural Faceted Boulders & Ore Nodes
+// 2. High-Tessellation Procedural Boulders & Ore Veins
 export function createProceduralRock(type: 'stone' | 'iron' | 'flint' = 'stone'): THREE.Group {
   const rockGroup = new THREE.Group();
 
@@ -101,14 +101,17 @@ export function createProceduralRock(type: 'stone' | 'iron' | 'flint' = 'stone')
   if (type === 'iron') baseMat = gameMaterials.ironOre;
   if (type === 'flint') baseMat = gameMaterials.flintNode;
 
-  // Main faceted boulder
-  const boulderGeo = new THREE.DodecahedronGeometry(1.2, 1);
-  // Flatten bottom slightly so it sits flush
+  const boulderGeo = new THREE.DodecahedronGeometry(1.25, 2);
   const pos = boulderGeo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
     const y = pos.getY(i);
-    if (y < -0.3) {
-      pos.setY(i, y * 0.5);
+    const z = pos.getZ(i);
+    const warp = 1.0 + Math.sin(x * 3.1 + z * 2.7) * 0.12;
+    pos.setX(i, x * warp);
+    pos.setZ(i, z * warp);
+    if (y < -0.25) {
+      pos.setY(i, y * 0.45);
     }
   }
   boulderGeo.computeVertexNormals();
@@ -117,18 +120,16 @@ export function createProceduralRock(type: 'stone' | 'iron' | 'flint' = 'stone')
   boulder.position.y = 0.75;
   rockGroup.add(boulder);
 
-  // Secondary sub-boulder
-  const subGeo = new THREE.DodecahedronGeometry(0.65, 0);
+  const subGeo = new THREE.DodecahedronGeometry(0.68, 1);
   const subBoulder = new THREE.Mesh(subGeo, baseMat);
-  subBoulder.position.set(0.9, 0.4, 0.4);
+  subBoulder.position.set(0.92, 0.4, 0.42);
   rockGroup.add(subBoulder);
 
-  // If iron ore, add metallic glint crystals
   if (type === 'iron') {
-    for (let i = 0; i < 3; i++) {
-      const crystalGeo = new THREE.BoxGeometry(0.25, 0.25, 0.35);
+    for (let i = 0; i < 4; i++) {
+      const crystalGeo = new THREE.OctahedronGeometry(0.24, 0);
       const crystal = new THREE.Mesh(crystalGeo, gameMaterials.refinedSteel);
-      crystal.position.set(Math.sin(i) * 0.7, 0.8 + i * 0.2, Math.cos(i) * 0.7);
+      crystal.position.set(Math.sin(i * 1.6) * 0.75, 0.75 + i * 0.18, Math.cos(i * 1.6) * 0.75);
       crystal.rotation.set(0.4 * i, 0.8 * i, 0.2);
       rockGroup.add(crystal);
     }
@@ -142,35 +143,133 @@ export function createProceduralRock(type: 'stone' | 'iron' | 'flint' = 'stone')
 export function createHarvestableHerb(): THREE.Group {
   const herbGroup = new THREE.Group();
 
-  const stemGeo = new THREE.CylinderGeometry(0.04, 0.05, 0.6, 5);
+  const stemGeo = new THREE.CylinderGeometry(0.04, 0.05, 0.65, 8);
   const stem = new THREE.Mesh(stemGeo, gameMaterials.pineNeedles);
-  stem.position.y = 0.3;
+  stem.position.y = 0.32;
   herbGroup.add(stem);
 
-  // Radiating leaves
-  for (let i = 0; i < 5; i++) {
-    const angle = (i * Math.PI * 2) / 5;
-    const leafGeo = new THREE.BoxGeometry(0.3, 0.04, 0.15);
+  for (let i = 0; i < 6; i++) {
+    const angle = (i * Math.PI * 2) / 6;
+    const leafGeo = new THREE.SphereGeometry(0.18, 10, 8);
+    leafGeo.scale(1.4, 0.25, 0.7);
     const leaf = new THREE.Mesh(leafGeo, gameMaterials.oakLeaves);
-    leaf.position.set(Math.cos(angle) * 0.25, 0.25, Math.sin(angle) * 0.25);
-    leaf.rotation.y = angle;
+    leaf.position.set(Math.cos(angle) * 0.24, 0.28, Math.sin(angle) * 0.24);
+    leaf.rotation.y = -angle;
     leaf.rotation.z = 0.25;
     herbGroup.add(leaf);
   }
 
-  // Blossom / Berries
-  const bloomGeo = new THREE.SphereGeometry(0.16, 6, 6);
-  const bloomMat = new THREE.MeshStandardMaterial({ color: 0x9333ea, roughness: 0.5 });
+  const bloomGeo = new THREE.SphereGeometry(0.16, 12, 12);
+  const bloomMat = new THREE.MeshPhysicalMaterial({
+    color: 0xa855f7,
+    emissive: 0x581c87,
+    emissiveIntensity: 0.4,
+    roughness: 0.3,
+    clearcoat: 0.6,
+  });
   const bloom = new THREE.Mesh(bloomGeo, bloomMat);
-  bloom.position.y = 0.65;
+  bloom.position.y = 0.68;
   herbGroup.add(bloom);
 
   setupGroupShadows(herbGroup, true, false);
   return herbGroup;
 }
 
+// 3B. Frontier Supply Cache Crate
+export function createSupplyCacheMesh(): THREE.Group {
+  const group = new THREE.Group();
+  const crate = new THREE.Mesh(
+    new THREE.BoxGeometry(1.1, 0.75, 0.8),
+    gameMaterials.tacticalCamoVest
+  );
+  crate.position.y = 0.375;
+  group.add(crate);
+
+  const strap1 = new THREE.Mesh(
+    new THREE.BoxGeometry(0.12, 0.78, 0.84),
+    gameMaterials.buckleBrass
+  );
+  strap1.position.set(-0.32, 0.38, 0);
+  group.add(strap1);
+
+  const strap2 = strap1.clone();
+  strap2.position.x = 0.32;
+  group.add(strap2);
+
+  const beaconLight = new THREE.Mesh(
+    new THREE.SphereGeometry(0.08, 10, 10),
+    gameMaterials.emberGlow
+  );
+  beaconLight.position.set(0, 0.8, 0);
+  group.add(beaconLight);
+
+  setupGroupShadows(group, true, true);
+  return group;
+}
+
+// 3C. Cartographer Survey Beacon Spire (Unlocks & Expands Map Sectors)
+export function createSurveyBeaconMesh(activated = false): THREE.Group {
+  const group = new THREE.Group();
+
+  // Octagonal Stone Pedestal Base
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.1, 1.35, 0.6, 8),
+    gameMaterials.granite
+  );
+  base.position.y = 0.3;
+  group.add(base);
+
+  // Brushed Steel Pylon Core
+  const pylon = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.28, 0.45, 4.2, 12),
+    gameMaterials.ironBand
+  );
+  pylon.position.y = 2.4;
+  group.add(pylon);
+
+  // Brass Telemetry Rings
+  for (const ry of [1.4, 2.8, 4.1]) {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.52, 0.045, 10, 24),
+      gameMaterials.buckleBrass
+    );
+    ring.position.y = ry;
+    ring.rotation.x = Math.PI / 2;
+    group.add(ring);
+  }
+
+  // Floating Aetheric Crystal Core at Apex
+  const crystalMat = activated
+    ? gameMaterials.beaconCrystalActive
+    : gameMaterials.beaconCrystalInactive;
+  const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.55, 1), crystalMat);
+  crystal.name = 'beacon_crystal';
+  crystal.position.y = 5.2;
+  group.add(crystal);
+
+  // Outer Gyroscopic Ring
+  const gyro = new THREE.Mesh(
+    new THREE.TorusGeometry(0.85, 0.035, 10, 28),
+    gameMaterials.refinedSteel
+  );
+  gyro.name = 'beacon_gyro';
+  gyro.position.y = 5.2;
+  gyro.rotation.x = 0.6;
+  group.add(gyro);
+
+  if (!isSoftwareGl) {
+    const light = new THREE.PointLight(activated ? 0x10b981 : 0x38bdf8, 3.0, 18);
+    light.position.set(0, 5.2, 0);
+    group.add(light);
+  }
+
+  setupGroupShadows(group, true, true);
+  return group;
+}
+
 export interface PlayerModelParts {
   root: THREE.Group;
+  pelvisGroup: THREE.Group;
   spineGroup: THREE.Group;
   neckGroup: THREE.Group;
   headGroup: THREE.Group;
@@ -186,310 +285,520 @@ export interface PlayerModelParts {
   heldToolGroup: THREE.Group;
 }
 
-// 4. Photorealistic Procedural Player Character (Anatomical Sculpt with Articulated Kinematic Joints)
+// 4. 8K High-Tessellation Photorealistic Player Character (100% Seamless Unified Anatomy)
 export function createPlayerModel(): PlayerModelParts {
   const root = new THREE.Group();
 
-  // Root Pelvis & Waist Belt
+  // Root Pelvis & Hips (Positioned at anatomical hip height y = 0.94m)
   const pelvisGroup = new THREE.Group();
-  pelvisGroup.position.y = 0.96;
+  pelvisGroup.position.y = 0.94;
   root.add(pelvisGroup);
 
-  // Pelvic base core
-  const pelvisGeo = new THREE.CylinderGeometry(0.22, 0.19, 0.22, 10);
+  // Seamless Anatomical Pelvis & Hip Capsule Core
+  const pelvisGeo = new THREE.CylinderGeometry(0.215, 0.195, 0.26, SEG);
   const pelvisMesh = new THREE.Mesh(pelvisGeo, gameMaterials.tacticalCamoVest);
-  pelvisMesh.position.y = 0;
+  pelvisMesh.position.y = 0.02;
   pelvisGroup.add(pelvisMesh);
 
-  // Tactical Duty Belt with Stitching
-  const beltGeo = new THREE.CylinderGeometry(0.23, 0.23, 0.08, 12);
+  // Overlapping Hip-to-Abdomen Spherical Bridge (Eliminates any possible gap during spine rotation/lean)
+  const waistBridge = new THREE.Mesh(
+    new THREE.SphereGeometry(0.21, SEG, 16),
+    gameMaterials.tacticalCamoVest
+  );
+  waistBridge.position.set(0, 0.11, 0);
+  waistBridge.scale.set(1.02, 0.85, 0.88);
+  pelvisGroup.add(waistBridge);
+
+  // Weathered Leather Trench Coat Skirt / Tail overlapping upper thighs & waist
+  const coatSkirt = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.225, 0.275, 0.34, SEG, 1, true, Math.PI * 0.22, Math.PI * 1.56),
+    gameMaterials.trenchCoatLeather
+  );
+  coatSkirt.material.side = THREE.DoubleSide;
+  coatSkirt.position.set(0, -0.09, -0.01);
+  pelvisGroup.add(coatSkirt);
+
+  // Tactical Duty Belt with Brass Cartridge Loops
+  const beltGeo = new THREE.CylinderGeometry(0.232, 0.232, 0.085, SEG);
   const beltMesh = new THREE.Mesh(beltGeo, gameMaterials.trenchCoatLeather);
   beltMesh.position.y = 0.04;
   pelvisGroup.add(beltMesh);
 
-  // Solid Brass Belt Buckle
-  const buckleGeo = new THREE.BoxGeometry(0.09, 0.08, 0.06);
-  const buckleMesh = new THREE.Mesh(buckleGeo, gameMaterials.buckleBrass);
-  buckleMesh.position.set(0, 0.04, 0.21);
+  // Solid Forged Brass Belt Buckle
+  const buckleMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(0.095, 0.085, 0.05),
+    gameMaterials.buckleBrass
+  );
+  buckleMesh.position.set(0, 0.04, 0.215);
   pelvisGroup.add(buckleMesh);
 
-  // Survival Canteen Flask on Left Hip
-  const canteenGeo = new THREE.CylinderGeometry(0.055, 0.055, 0.15, 8);
-  const canteenMesh = new THREE.Mesh(canteenGeo, gameMaterials.combatBootRubber);
-  canteenMesh.position.set(-0.24, -0.02, 0);
-  canteenMesh.rotation.z = 0.15;
+  // Survival Canteen Flask & Leather Pouch on Hips
+  const canteenMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.055, 0.055, 0.16, 16),
+    gameMaterials.combatBootRubber
+  );
+  canteenMesh.position.set(-0.235, -0.02, 0);
+  canteenMesh.rotation.z = 0.12;
   pelvisGroup.add(canteenMesh);
-  const canteenCap = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.04, 8), gameMaterials.razorSteel);
-  canteenCap.position.set(-0.24, 0.07, 0);
-  pelvisGroup.add(canteenCap);
 
-  // Sheathed Combat Knife on Right Hip
-  const knifeSheath = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.22, 0.07), gameMaterials.trenchCoatLeather);
-  knifeSheath.position.set(0.24, -0.04, 0.04);
-  knifeSheath.rotation.z = -0.2;
+  const knifeSheath = new THREE.Mesh(
+    new THREE.BoxGeometry(0.045, 0.22, 0.075),
+    gameMaterials.trenchCoatLeather
+  );
+  knifeSheath.position.set(0.235, -0.04, 0.04);
+  knifeSheath.rotation.z = -0.18;
   pelvisGroup.add(knifeSheath);
 
-  // Spine Group (Pivots for breathing, spine bending, and torso lean)
+  // Spine Group (Anchored directly inside the waist socket at local y = 0.08 — NEVER separated!)
   const spineGroup = new THREE.Group();
-  spineGroup.position.set(0, 0.11, 0);
+  spineGroup.position.set(0, 0.08, 0);
   pelvisGroup.add(spineGroup);
 
-  // Pectoral Anatomical Torso Core
-  const torsoGeo = new THREE.CylinderGeometry(0.27, 0.22, 0.58, 10);
-  const torsoMesh = new THREE.Mesh(torsoGeo, gameMaterials.tacticalCamoVest);
-  torsoMesh.position.y = 0.29;
-  spineGroup.add(torsoMesh);
+  // Lower Lumbar & Abdomen Core overlapping downward into pelvis (-0.06 to +0.28)
+  const abdomenGeo = new THREE.CylinderGeometry(0.235, 0.21, 0.34, SEG);
+  const abdomenMesh = new THREE.Mesh(abdomenGeo, gameMaterials.tacticalCamoVest);
+  abdomenMesh.position.y = 0.11;
+  abdomenMesh.scale.set(1.0, 1.0, 0.84);
+  spineGroup.add(abdomenMesh);
 
-  // Ballistic Tactical Armor Chestplate with MOLLE Webbing
-  const chestPlateGeo = new THREE.BoxGeometry(0.36, 0.38, 0.18);
-  const chestPlate = new THREE.Mesh(chestPlateGeo, gameMaterials.playerArmor);
-  chestPlate.position.set(0, 0.35, 0.09);
+  // Upper Pectoral & Ribcage Anatomical Torso (Smoothly joins abdomen at y = 0.22..0.60)
+  const ribcageGeo = new THREE.CylinderGeometry(0.275, 0.235, 0.42, SEG);
+  const ribcageMesh = new THREE.Mesh(ribcageGeo, gameMaterials.tacticalCamoVest);
+  ribcageMesh.position.y = 0.41;
+  ribcageMesh.scale.set(1.04, 1.0, 0.85);
+  spineGroup.add(ribcageMesh);
+
+  // Sculpted Pectoral Armor Plates & Ballistic Rig
+  const chestPlate = new THREE.Mesh(
+    new THREE.BoxGeometry(0.38, 0.36, 0.23),
+    gameMaterials.playerArmor
+  );
+  chestPlate.position.set(0, 0.4, 0.03);
   spineGroup.add(chestPlate);
 
-  // Weathered Leather Collar & Harness Straps
-  for (let s of [-0.14, 0.14]) {
-    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.42, 0.22), gameMaterials.trenchCoatLeather);
-    strap.position.set(s, 0.36, 0);
+  // Beveled Pectoral Sub-Plates
+  for (const side of [-0.095, 0.095]) {
+    const pecPlate = new THREE.Mesh(
+      new THREE.BoxGeometry(0.16, 0.15, 0.045),
+      gameMaterials.ironBand
+    );
+    pecPlate.position.set(side, 0.46, 0.145);
+    pecPlate.rotation.y = side > 0 ? -0.12 : 0.12;
+    spineGroup.add(pecPlate);
+  }
+
+  // Expedition Survival Backpack with Rolled Fur Bedroll & Brass Lantern on Back
+  const backpackGroup = new THREE.Group();
+  backpackGroup.position.set(0, 0.38, -0.18);
+  const packBody = new THREE.Mesh(
+    new THREE.BoxGeometry(0.32, 0.42, 0.16),
+    gameMaterials.trenchCoatLeather
+  );
+  backpackGroup.add(packBody);
+  const bedroll = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.065, 0.065, 0.38, 16),
+    gameMaterials.furInsulation
+  );
+  bedroll.rotation.z = Math.PI / 2;
+  bedroll.position.set(0, 0.25, 0);
+  backpackGroup.add(bedroll);
+  const packLantern = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.035, 0.045, 0.11, 10),
+    gameMaterials.emberGlow
+  );
+  packLantern.position.set(-0.16, -0.08, -0.05);
+  backpackGroup.add(packLantern);
+  spineGroup.add(backpackGroup);
+
+  // Leather Shoulder Harness & Layered Steel Pauldrons
+  for (const s of [-0.15, 0.15]) {
+    const strap = new THREE.Mesh(
+      new THREE.BoxGeometry(0.06, 0.46, 0.26),
+      gameMaterials.trenchCoatLeather
+    );
+    strap.position.set(s, 0.39, 0);
     spineGroup.add(strap);
 
-    // Beveled Shoulder Pauldrons
-    const pauldronGeo = new THREE.BoxGeometry(0.18, 0.14, 0.24);
-    const pauldron = new THREE.Mesh(pauldronGeo, gameMaterials.ironBand);
-    pauldron.position.set(s * 2.2, 0.52, 0);
-    pauldron.rotation.z = s > 0 ? -0.2 : 0.2;
+    const pauldron = new THREE.Mesh(
+      new THREE.SphereGeometry(0.135, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.65),
+      gameMaterials.ironBand
+    );
+    pauldron.position.set(s * 2.15, 0.56, 0);
+    pauldron.rotation.z = s > 0 ? -0.35 : 0.35;
     spineGroup.add(pauldron);
   }
 
   // Neck Group
   const neckGroup = new THREE.Group();
-  neckGroup.position.set(0, 0.58, 0);
+  neckGroup.position.set(0, 0.6, 0);
   spineGroup.add(neckGroup);
 
-  const neckMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.095, 0.14, 8), gameMaterials.photorealSkin);
+  const neckMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.082, 0.098, 0.16, 20),
+    gameMaterials.photorealSkin
+  );
   neckMesh.position.y = 0.07;
   neckGroup.add(neckMesh);
 
-  // Weathered Amber Scarf & Cowl
-  const cowlMesh = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.06, 8, 16), gameMaterials.scarfCloth);
-  cowlMesh.position.set(0, 0.06, 0);
+  // Weathered Crimson-Amber Outcast Scarf Cowl
+  const cowlMesh = new THREE.Mesh(
+    new THREE.TorusGeometry(0.145, 0.058, 14, 28),
+    gameMaterials.scarfCloth
+  );
+  cowlMesh.position.set(0, 0.05, 0);
   cowlMesh.rotation.x = Math.PI / 2;
   neckGroup.add(cowlMesh);
 
-  // Dynamic Scarf Tail (Reacts to physics velocity & wind)
+  // Dynamic Scarf Tail
   const scarfTail = new THREE.Group();
   scarfTail.position.set(0.08, 0.05, -0.14);
-  const scarfRibbon1 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.45, 0.02), gameMaterials.scarfCloth);
-  scarfRibbon1.position.y = -0.22;
+  const scarfRibbon1 = new THREE.Mesh(
+    new THREE.BoxGeometry(0.09, 0.48, 0.022),
+    gameMaterials.scarfCloth
+  );
+  scarfRibbon1.position.y = -0.24;
   scarfTail.add(scarfRibbon1);
   neckGroup.add(scarfTail);
 
-  // Head Group (Anatomical Cranium, Facial Features, Realistic Eyes, Layered Hair)
+  // 8K High-Tessellation Head Group (Anatomical Cranium, Cheekbones, Jaw, Lips, Ears, Eyes, Hair)
   const headGroup = new THREE.Group();
   headGroup.position.set(0, 0.14, 0);
   neckGroup.add(headGroup);
 
-  // Cranium base
-  const craniumGeo = new THREE.SphereGeometry(0.165, 12, 12);
+  // Smooth High-Poly Cranium & Face
+  const craniumGeo = new THREE.SphereGeometry(0.168, 32, 32);
   const cranium = new THREE.Mesh(craniumGeo, gameMaterials.photorealSkin);
-  cranium.position.set(0, 0.14, -0.01);
-  cranium.scale.set(0.95, 1.15, 1.05);
+  cranium.position.set(0, 0.14, 0);
+  cranium.scale.set(0.94, 1.14, 1.04);
   headGroup.add(cranium);
 
-  // Sculpted Jaw and Chin
-  const jawGeo = new THREE.ConeGeometry(0.13, 0.16, 5);
+  // Sculpted Jawline & Chin
+  const jawGeo = new THREE.SphereGeometry(0.125, 24, 20);
   const jaw = new THREE.Mesh(jawGeo, gameMaterials.photorealSkin);
-  jaw.position.set(0, 0.03, 0.05);
-  jaw.rotation.x = Math.PI * 0.85;
+  jaw.position.set(0, 0.055, 0.035);
+  jaw.scale.set(0.92, 0.78, 1.08);
   headGroup.add(jaw);
 
-  // Defined Nose Bridge
-  const nose = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.07, 0.05), gameMaterials.photorealSkin);
-  nose.position.set(0, 0.13, 0.17);
-  nose.rotation.x = -0.15;
-  headGroup.add(nose);
+  // Sculpted Nose Bridge & Tip
+  const noseBridge = new THREE.Mesh(
+    new THREE.ConeGeometry(0.028, 0.085, 12),
+    gameMaterials.photorealSkin
+  );
+  noseBridge.position.set(0, 0.13, 0.172);
+  noseBridge.rotation.x = Math.PI * 0.42;
+  headGroup.add(noseBridge);
 
-  // Realistic Eyes (Sockets + White Sclera + Hazel-Green Iris + Dark Pupil)
-  for (let s of [-0.055, 0.055]) {
+  // Anatomical Lips (Upper & Lower Vermilion)
+  const upperLip = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.011, 0.042, 8, 12),
+    gameMaterials.lipSkin
+  );
+  upperLip.rotation.z = Math.PI / 2;
+  upperLip.position.set(0, 0.072, 0.158);
+  headGroup.add(upperLip);
+
+  const lowerLip = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.012, 0.038, 8, 12),
+    gameMaterials.lipSkin
+  );
+  lowerLip.rotation.z = Math.PI / 2;
+  lowerLip.position.set(0, 0.056, 0.155);
+  headGroup.add(lowerLip);
+
+  // Anatomical Ears
+  for (const s of [-0.158, 0.158]) {
+    const ear = new THREE.Mesh(
+      new THREE.SphereGeometry(0.036, 12, 12),
+      gameMaterials.photorealSkin
+    );
+    ear.scale.set(0.38, 0.95, 0.65);
+    ear.position.set(s, 0.135, -0.01);
+    headGroup.add(ear);
+  }
+
+  // Realistic 8K Eyes (Sclera Sphere + Emerald-Hazel Iris + Pupil + Specular Cornea)
+  for (const s of [-0.056, 0.056]) {
     const eyeSocket = new THREE.Group();
-    eyeSocket.position.set(s, 0.155, 0.145);
+    eyeSocket.position.set(s, 0.155, 0.146);
 
-    // Eyeball Sclera
-    const eyeBall = new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 8), gameMaterials.eyeWhite);
+    const eyeBall = new THREE.Mesh(
+      new THREE.SphereGeometry(0.028, 18, 18),
+      gameMaterials.eyeWhite
+    );
     eyeSocket.add(eyeBall);
 
-    // Iris
-    const iris = new THREE.Mesh(new THREE.CircleGeometry(0.015, 8), gameMaterials.eyeIris);
-    iris.position.z = 0.026;
+    const iris = new THREE.Mesh(
+      new THREE.CircleGeometry(0.015, 18),
+      gameMaterials.eyeIris
+    );
+    iris.position.z = 0.0265;
     eyeSocket.add(iris);
 
-    // Pupil
-    const pupil = new THREE.Mesh(new THREE.CircleGeometry(0.007, 8), gameMaterials.eyePupil);
-    pupil.position.z = 0.027;
+    const pupil = new THREE.Mesh(
+      new THREE.CircleGeometry(0.007, 16),
+      gameMaterials.eyePupil
+    );
+    pupil.position.z = 0.0275;
     eyeSocket.add(pupil);
 
-    // Brow ridge
-    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.015, 0.03), gameMaterials.hairBrunette);
-    brow.position.set(0, 0.035, 0.01);
+    const brow = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.008, 0.042, 6, 10),
+      gameMaterials.hairBrunette
+    );
+    brow.rotation.z = Math.PI / 2 + (s > 0 ? -0.08 : 0.08);
+    brow.position.set(0, 0.032, 0.012);
     eyeSocket.add(brow);
 
     headGroup.add(eyeSocket);
   }
 
-  // Layered Sculpted Hair Strands (Volumetric locks with specular sheen)
-  const hairCrown = new THREE.Mesh(new THREE.SphereGeometry(0.175, 10, 10), gameMaterials.hairBrunette);
-  hairCrown.position.set(0, 0.18, -0.02);
-  hairCrown.scale.set(1.02, 1.05, 1.1);
+  // Volumetric Sculpted Hair Crown & Swept Locks
+  const hairCrown = new THREE.Mesh(
+    new THREE.SphereGeometry(0.176, 24, 24),
+    gameMaterials.hairBrunette
+  );
+  hairCrown.position.set(0, 0.175, -0.022);
+  hairCrown.scale.set(1.02, 1.06, 1.1);
   headGroup.add(hairCrown);
 
-  // Front swept hair strands
-  for (let i = 0; i < 5; i++) {
-    const strandAngle = (i - 2) * 0.18;
-    const strand = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.14, 5), gameMaterials.hairBrunette);
-    strand.position.set(Math.sin(strandAngle) * 0.12, 0.26, 0.1);
-    strand.rotation.set(0.6, 0, -strandAngle * 0.8);
+  for (let i = 0; i < 7; i++) {
+    const strandAngle = (i - 3) * 0.16;
+    const strand = new THREE.Mesh(
+      new THREE.ConeGeometry(0.036, 0.15, 10),
+      gameMaterials.hairBrunette
+    );
+    strand.position.set(Math.sin(strandAngle) * 0.13, 0.255, 0.105);
+    strand.rotation.set(0.55, 0, -strandAngle * 0.75);
     headGroup.add(strand);
   }
 
-  // Survival Aviator / Tactical Goggles on Forehead
-  const goggleFrame = new THREE.Mesh(new THREE.TorusGeometry(0.165, 0.025, 6, 16), gameMaterials.buckleBrass);
-  goggleFrame.position.set(0, 0.22, 0.04);
-  goggleFrame.rotation.x = Math.PI / 2.3;
-  headGroup.add(goggleFrame);
+  // Tactical Brass Goggles on Forehead
+  const goggleStrap = new THREE.Mesh(
+    new THREE.TorusGeometry(0.168, 0.018, 10, 28),
+    gameMaterials.trenchCoatLeather
+  );
+  goggleStrap.position.set(0, 0.225, 0.01);
+  goggleStrap.rotation.x = Math.PI / 2.2;
+  headGroup.add(goggleStrap);
 
-  // Left Leg (Hip Joint -> Thigh -> Knee Joint -> Calf -> Combat Boot)
+  for (const gx of [-0.06, 0.06]) {
+    const lensRim = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.042, 0.042, 0.025, 16),
+      gameMaterials.buckleBrass
+    );
+    lensRim.rotation.x = Math.PI / 2.2;
+    lensRim.position.set(gx, 0.23, 0.155);
+    headGroup.add(lensRim);
+  }
+
+  // Left Leg (Hip Ball Joint -> Muscular Thigh -> Knee Joint -> Calf -> Laced Combat Boot)
   const leftLeg = new THREE.Group();
-  leftLeg.position.set(-0.16, 0, 0);
+  leftLeg.position.set(-0.115, -0.02, 0);
   pelvisGroup.add(leftLeg);
 
-  // Upper Thigh
-  const lThighMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.08, 0.46, 8), gameMaterials.tacticalCamoVest);
+  const lHipSocket = new THREE.Mesh(
+    new THREE.SphereGeometry(0.1, 16, 16),
+    gameMaterials.tacticalCamoVest
+  );
+  leftLeg.add(lHipSocket);
+
+  const lThighMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.102, 0.082, 0.46, SEG),
+    gameMaterials.tacticalCamoVest
+  );
   lThighMesh.position.y = -0.23;
   leftLeg.add(lThighMesh);
 
-  // Left Knee Joint
   const leftLowerLeg = new THREE.Group();
   leftLowerLeg.position.set(0, -0.46, 0);
   leftLeg.add(leftLowerLeg);
 
-  // Knee Guard Plate
-  const lKneePad = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.07), gameMaterials.ironBand);
-  lKneePad.position.set(0, 0, 0.07);
-  leftLowerLeg.add(lKneePad);
+  const lKneeJoint = new THREE.Mesh(
+    new THREE.SphereGeometry(0.08, 16, 16),
+    gameMaterials.ironBand
+  );
+  leftLowerLeg.add(lKneeJoint);
 
-  // Calf with Laced Gaiter
-  const lCalfMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.078, 0.065, 0.38, 8), gameMaterials.trenchCoatLeather);
-  lCalfMesh.position.y = -0.19;
+  const lCalfMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.082, 0.066, 0.4, SEG),
+    gameMaterials.trenchCoatLeather
+  );
+  lCalfMesh.position.y = -0.2;
   leftLowerLeg.add(lCalfMesh);
 
-  // Combat Boot with Beveled Rubber Tread Sole
-  const lBoot = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.26), gameMaterials.combatBootRubber);
-  lBoot.position.set(0, -0.42, 0.04);
+  const lBoot = new THREE.Mesh(
+    new THREE.BoxGeometry(0.135, 0.14, 0.26),
+    gameMaterials.combatBootRubber
+  );
+  lBoot.position.set(0, -0.41, 0.045);
   leftLowerLeg.add(lBoot);
 
-  // Right Leg (Hip Joint -> Thigh -> Knee Joint -> Calf -> Combat Boot)
+  // Right Leg (Hip Ball Joint -> Muscular Thigh -> Knee Joint -> Calf -> Laced Combat Boot)
   const rightLeg = new THREE.Group();
-  rightLeg.position.set(0.16, 0, 0);
+  rightLeg.position.set(0.115, -0.02, 0);
   pelvisGroup.add(rightLeg);
 
-  // Upper Thigh
-  const rThighMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.08, 0.46, 8), gameMaterials.tacticalCamoVest);
+  const rHipSocket = new THREE.Mesh(
+    new THREE.SphereGeometry(0.1, 16, 16),
+    gameMaterials.tacticalCamoVest
+  );
+  rightLeg.add(rHipSocket);
+
+  const rThighMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.102, 0.082, 0.46, SEG),
+    gameMaterials.tacticalCamoVest
+  );
   rThighMesh.position.y = -0.23;
   rightLeg.add(rThighMesh);
 
-  // Right Knee Joint
   const rightLowerLeg = new THREE.Group();
   rightLowerLeg.position.set(0, -0.46, 0);
   rightLeg.add(rightLowerLeg);
 
-  // Knee Guard Plate
-  const rKneePad = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.07), gameMaterials.ironBand);
-  rKneePad.position.set(0, 0, 0.07);
-  rightLowerLeg.add(rKneePad);
+  const rKneeJoint = new THREE.Mesh(
+    new THREE.SphereGeometry(0.08, 16, 16),
+    gameMaterials.ironBand
+  );
+  rightLowerLeg.add(rKneeJoint);
 
-  // Calf with Laced Gaiter
-  const rCalfMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.078, 0.065, 0.38, 8), gameMaterials.trenchCoatLeather);
-  rCalfMesh.position.y = -0.19;
+  const rCalfMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.082, 0.066, 0.4, SEG),
+    gameMaterials.trenchCoatLeather
+  );
+  rCalfMesh.position.y = -0.2;
   rightLowerLeg.add(rCalfMesh);
 
-  // Combat Boot with Beveled Rubber Tread Sole
-  const rBoot = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.26), gameMaterials.combatBootRubber);
-  rBoot.position.set(0, -0.42, 0.04);
+  const rBoot = new THREE.Mesh(
+    new THREE.BoxGeometry(0.135, 0.14, 0.26),
+    gameMaterials.combatBootRubber
+  );
+  rBoot.position.set(0, -0.41, 0.045);
   rightLowerLeg.add(rBoot);
 
-  // Left Arm (Shoulder Joint -> Bicep -> Elbow Joint -> Forearm -> Articulated Hand)
+  // Left Arm (Shoulder Socket -> Deltoid/Bicep -> Elbow Joint -> Forearm Vambrace -> Sculpted Hand)
   const leftArm = new THREE.Group();
-  leftArm.position.set(-0.35, 0.46, 0);
+  leftArm.position.set(-0.32, 0.5, 0);
   spineGroup.add(leftArm);
 
-  const lBicepMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.065, 0.34, 8), gameMaterials.tacticalCamoVest);
+  const lShoulderBall = new THREE.Mesh(
+    new THREE.SphereGeometry(0.082, 16, 16),
+    gameMaterials.tacticalCamoVest
+  );
+  leftArm.add(lShoulderBall);
+
+  const lBicepMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.078, 0.066, 0.34, SEG),
+    gameMaterials.tacticalCamoVest
+  );
   lBicepMesh.position.y = -0.17;
   leftArm.add(lBicepMesh);
 
-  // Left Elbow Joint
   const leftForearm = new THREE.Group();
   leftForearm.position.set(0, -0.34, 0);
   leftArm.add(leftForearm);
 
-  const lForearmMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.055, 0.32, 8), gameMaterials.trenchCoatLeather);
+  const lElbowBall = new THREE.Mesh(
+    new THREE.SphereGeometry(0.065, 14, 14),
+    gameMaterials.trenchCoatLeather
+  );
+  leftForearm.add(lElbowBall);
+
+  const lForearmMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.066, 0.054, 0.32, SEG),
+    gameMaterials.trenchCoatLeather
+  );
   lForearmMesh.position.y = -0.16;
   leftForearm.add(lForearmMesh);
 
-  // Hand & Fingers (Photoreal Skin)
-  const lHand = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.11, 0.05), gameMaterials.photorealSkin);
-  lHand.position.set(0, -0.36, 0);
+  const lHand = new THREE.Mesh(
+    new THREE.SphereGeometry(0.056, 14, 14),
+    gameMaterials.photorealSkin
+  );
+  lHand.scale.set(0.85, 1.25, 0.65);
+  lHand.position.set(0, -0.35, 0);
   leftForearm.add(lHand);
 
-  // Right Arm (Shoulder Joint -> Bicep -> Elbow Joint -> Forearm -> Grasping Hand & Weapon)
+  // Right Arm (Shoulder Socket -> Deltoid/Bicep -> Elbow Joint -> Forearm Vambrace -> Hand & Waraxe)
   const rightArm = new THREE.Group();
-  rightArm.position.set(0.35, 0.46, 0);
+  rightArm.position.set(0.32, 0.5, 0);
   spineGroup.add(rightArm);
 
-  const rBicepMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.065, 0.34, 8), gameMaterials.tacticalCamoVest);
+  const rShoulderBall = new THREE.Mesh(
+    new THREE.SphereGeometry(0.082, 16, 16),
+    gameMaterials.tacticalCamoVest
+  );
+  rightArm.add(rShoulderBall);
+
+  const rBicepMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.078, 0.066, 0.34, SEG),
+    gameMaterials.tacticalCamoVest
+  );
   rBicepMesh.position.y = -0.17;
   rightArm.add(rBicepMesh);
 
-  // Right Elbow Joint
   const rightForearm = new THREE.Group();
   rightForearm.position.set(0, -0.34, 0);
   rightArm.add(rightForearm);
 
-  const rForearmMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.055, 0.32, 8), gameMaterials.trenchCoatLeather);
+  const rElbowBall = new THREE.Mesh(
+    new THREE.SphereGeometry(0.065, 14, 14),
+    gameMaterials.trenchCoatLeather
+  );
+  rightForearm.add(rElbowBall);
+
+  const rForearmMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.066, 0.054, 0.32, SEG),
+    gameMaterials.trenchCoatLeather
+  );
   rForearmMesh.position.y = -0.16;
   rightForearm.add(rForearmMesh);
 
-  // Grasping Hand with Curled Fingers
-  const rHand = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.11, 0.05), gameMaterials.photorealSkin);
-  rHand.position.set(0, -0.36, 0);
+  const rHand = new THREE.Mesh(
+    new THREE.SphereGeometry(0.056, 14, 14),
+    gameMaterials.photorealSkin
+  );
+  rHand.scale.set(0.85, 1.25, 0.65);
+  rHand.position.set(0, -0.35, 0);
   rightForearm.add(rHand);
 
   // Held Tool / Weapon Group attached to right hand
   const heldToolGroup = new THREE.Group();
-  heldToolGroup.position.set(0, -0.38, 0.05);
+  heldToolGroup.position.set(0, -0.36, 0.05);
   rightForearm.add(heldToolGroup);
 
-  // Photorealistic Forged Survival Waraxe
-  // Curved Hardwood Handle with Wrapped Leather Grip
-  const axeHandle = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.88, 8), gameMaterials.woodPlanks);
+  const axeHandle = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.028, 0.034, 0.88, 16),
+    gameMaterials.woodPlanks
+  );
   axeHandle.rotation.x = Math.PI / 2;
   heldToolGroup.add(axeHandle);
 
-  const leatherGrip = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.034, 0.28, 8), gameMaterials.trenchCoatLeather);
+  const leatherGrip = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.033, 0.033, 0.28, 16),
+    gameMaterials.trenchCoatLeather
+  );
   leatherGrip.rotation.x = Math.PI / 2;
   heldToolGroup.add(leatherGrip);
 
-  // Forged Steel Collar Ferrule with Brass Rivets
-  const ferrule = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.04, 0.1, 8), gameMaterials.ironBand);
+  const ferrule = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.044, 0.038, 0.1, 16),
+    gameMaterials.ironBand
+  );
   ferrule.position.set(0, 0, 0.32);
   ferrule.rotation.x = Math.PI / 2;
   heldToolGroup.add(ferrule);
 
-  // Double-Beveled Razor Steel Axe Head
-  const axeHeadGeo = new THREE.BoxGeometry(0.06, 0.38, 0.26);
-  const axeHead = new THREE.Mesh(axeHeadGeo, gameMaterials.razorSteel);
+  const axeHead = new THREE.Mesh(
+    new THREE.BoxGeometry(0.055, 0.38, 0.26),
+    gameMaterials.razorSteel
+  );
   axeHead.position.set(0, 0.08, 0.36);
   heldToolGroup.add(axeHead);
 
-  const axeSpike = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.14, 4), gameMaterials.ironBand);
+  const axeSpike = new THREE.Mesh(
+    new THREE.ConeGeometry(0.038, 0.14, 10),
+    gameMaterials.ironBand
+  );
   axeSpike.position.set(0, -0.12, 0.36);
   axeSpike.rotation.x = Math.PI;
   heldToolGroup.add(axeSpike);
@@ -498,6 +807,7 @@ export function createPlayerModel(): PlayerModelParts {
 
   return {
     root,
+    pelvisGroup,
     spineGroup,
     neckGroup,
     headGroup,
@@ -514,89 +824,170 @@ export function createPlayerModel(): PlayerModelParts {
   };
 }
 
-// 5. Procedural NPCs with bespoke silhouettes
+// 5. 8K High-Tessellation Anatomical NPCs (Elena, Commander Drake, Vesper)
 export function createNPCModel(npcId: string): THREE.Group {
   const npc = new THREE.Group();
 
-  let coatMat = gameMaterials.leatherVest;
-  let accentColor = 0x10b981; // Elena green
+  let coatMat: THREE.Material = gameMaterials.leatherVest;
+  let hairMat: THREE.Material = gameMaterials.hairAuburn;
+  let accentColor = 0x10b981; // Elena emerald
   if (npcId === 'drake') {
     coatMat = gameMaterials.playerArmor;
-    accentColor = 0xf97316; // Drake orange
+    hairMat = gameMaterials.hairSilver;
+    accentColor = 0xf97316; // Drake amber-orange
   } else if (npcId === 'vesper') {
     coatMat = gameMaterials.furInsulation;
-    accentColor = 0xa855f7; // Vesper purple
+    hairMat = gameMaterials.hairBrunette;
+    accentColor = 0xa855f7; // Vesper violet
   }
 
-  // Base humanoid body
-  const legsGeo = new THREE.BoxGeometry(0.45, 0.9, 0.3);
-  const legs = new THREE.Mesh(legsGeo, gameMaterials.leatherVest);
-  legs.position.y = 0.45;
-  npc.add(legs);
+  // Anatomical Legs & Boots
+  for (const lx of [-0.11, 0.11]) {
+    const thigh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.098, 0.078, 0.48, 20),
+      gameMaterials.tacticalCamoVest
+    );
+    thigh.position.set(lx, 0.7, 0);
+    npc.add(thigh);
 
-  const torsoGeo = new THREE.BoxGeometry(0.6, 0.75, 0.38);
-  const torso = new THREE.Mesh(torsoGeo, coatMat);
-  torso.position.y = 1.35;
+    const calf = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.078, 0.064, 0.44, 20),
+      gameMaterials.trenchCoatLeather
+    );
+    calf.position.set(lx, 0.28, 0);
+    npc.add(calf);
+
+    const boot = new THREE.Mesh(
+      new THREE.BoxGeometry(0.13, 0.14, 0.25),
+      gameMaterials.combatBootRubber
+    );
+    boot.position.set(lx, 0.07, 0.04);
+    npc.add(boot);
+  }
+
+  // Seamless Pelvis, Waist & Sculpted Torso
+  const pelvis = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.21, 0.19, 0.26, 24),
+    coatMat
+  );
+  pelvis.position.y = 0.96;
+  npc.add(pelvis);
+
+  const torso = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.255, 0.205, 0.62, 24),
+    coatMat
+  );
+  torso.position.y = 1.36;
+  torso.scale.set(1.02, 1.0, 0.85);
   npc.add(torso);
 
-  const headGeo = new THREE.BoxGeometry(0.35, 0.38, 0.35);
-  const head = new THREE.Mesh(headGeo, gameMaterials.skinTone);
-  head.position.y = 1.95;
-  npc.add(head);
+  // Belt & Brass Buckle
+  const belt = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.22, 0.22, 0.08, 24),
+    gameMaterials.trenchCoatLeather
+  );
+  belt.position.y = 1.04;
+  npc.add(belt);
 
-  // Accent detail
-  if (npcId === 'elena') {
-    // Herbalist Satchel & Cloak
-    const satchelGeo = new THREE.BoxGeometry(0.3, 0.25, 0.15);
-    const satchelMat = new THREE.MeshStandardMaterial({ color: 0x4d3826, roughness: 0.8 });
-    const satchel = new THREE.Mesh(satchelGeo, satchelMat);
-    satchel.position.set(0.32, 1.0, 0);
-    npc.add(satchel);
+  // Arms & Hands
+  for (const ax of [-0.31, 0.31]) {
+    const arm = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.072, 0.056, 0.62, 18),
+      coatMat
+    );
+    arm.position.set(ax, 1.32, 0);
+    arm.rotation.z = ax > 0 ? -0.08 : 0.08;
+    npc.add(arm);
 
-    const capeGeo = new THREE.BoxGeometry(0.65, 0.85, 0.08);
-    const capeMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.7 });
-    const cape = new THREE.Mesh(capeGeo, capeMat);
-    cape.position.set(0, 1.3, -0.22);
-    npc.add(cape);
-  } else if (npcId === 'drake') {
-    // Heavy Pauldrons & Tactical Plate
-    for (let s of [-0.38, 0.38]) {
-      const pauldronGeo = new THREE.BoxGeometry(0.24, 0.2, 0.32);
-      const pauldron = new THREE.Mesh(pauldronGeo, gameMaterials.refinedSteel);
-      pauldron.position.set(s, 1.7, 0);
-      npc.add(pauldron);
-    }
-    // Weapon sheath
-    const sheathGeo = new THREE.BoxGeometry(0.1, 0.9, 0.15);
-    const sheath = new THREE.Mesh(sheathGeo, gameMaterials.ironBand);
-    sheath.position.set(-0.35, 0.9, 0);
-    sheath.rotation.z = 0.2;
-    npc.add(sheath);
-  } else {
-    // Vesper: Scavenger Rogue Coat & Daggers
-    const scarfGeo = new THREE.TorusGeometry(0.25, 0.08, 6, 12);
-    const scarfMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.6 });
-    const scarf = new THREE.Mesh(scarfGeo, scarfMat);
-    scarf.position.set(0, 1.75, 0);
-    scarf.rotation.x = Math.PI / 2;
-    npc.add(scarf);
-
-    // Twin daggers
-    for (let s of [-0.3, 0.3]) {
-      const daggerGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.45, 5);
-      const dagger = new THREE.Mesh(daggerGeo, gameMaterials.refinedSteel);
-      dagger.position.set(s, 0.85, 0.15);
-      dagger.rotation.z = s > 0 ? 0.3 : -0.3;
-      npc.add(dagger);
-    }
+    const hand = new THREE.Mesh(
+      new THREE.SphereGeometry(0.052, 14, 14),
+      gameMaterials.photorealSkin
+    );
+    hand.position.set(ax * 1.08, 0.98, 0);
+    npc.add(hand);
   }
 
-  // Floating Name / Status Beacon Marker above head
-  const markerGeo = new THREE.ConeGeometry(0.12, 0.25, 5);
+  // Neck & Sculpted 8K Head with Eyes, Lips & Hair
+  const neck = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.078, 0.09, 0.15, 18),
+    gameMaterials.photorealSkin
+  );
+  neck.position.y = 1.72;
+  npc.add(neck);
+
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.165, 28, 28),
+    gameMaterials.photorealSkin
+  );
+  head.position.y = 1.92;
+  head.scale.set(0.94, 1.12, 1.02);
+  npc.add(head);
+
+  // Eyes & Lips
+  for (const ex of [-0.054, 0.054]) {
+    const eye = new THREE.Mesh(
+      new THREE.SphereGeometry(0.025, 14, 14),
+      gameMaterials.eyeWhite
+    );
+    eye.position.set(ex, 1.93, 0.145);
+    npc.add(eye);
+
+    const pupil = new THREE.Mesh(
+      new THREE.CircleGeometry(0.011, 12),
+      gameMaterials.eyeIris
+    );
+    pupil.position.set(ex, 1.93, 0.169);
+    npc.add(pupil);
+  }
+
+  const lips = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.011, 0.038, 6, 10),
+    gameMaterials.lipSkin
+  );
+  lips.rotation.z = Math.PI / 2;
+  lips.position.set(0, 1.84, 0.155);
+  npc.add(lips);
+
+  const hair = new THREE.Mesh(
+    new THREE.SphereGeometry(0.174, 24, 24),
+    hairMat
+  );
+  hair.position.set(0, 1.96, -0.02);
+  hair.scale.set(1.03, 1.05, 1.1);
+  npc.add(hair);
+
+  // Character-Specific Signature Gear
+  if (npcId === 'elena') {
+    const cloak = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.24, 0.36, 0.95, 20, 1, true, Math.PI * 0.5, Math.PI),
+      new THREE.MeshPhysicalMaterial({ color: accentColor, roughness: 0.65, side: THREE.DoubleSide })
+    );
+    cloak.position.set(0, 1.22, -0.04);
+    npc.add(cloak);
+  } else if (npcId === 'drake') {
+    for (const s of [-0.34, 0.34]) {
+      const pauldron = new THREE.Mesh(
+        new THREE.SphereGeometry(0.14, 16, 14),
+        gameMaterials.refinedSteel
+      );
+      pauldron.position.set(s, 1.62, 0);
+      npc.add(pauldron);
+    }
+  } else {
+    const scarf = new THREE.Mesh(
+      new THREE.TorusGeometry(0.16, 0.055, 12, 24),
+      new THREE.MeshPhysicalMaterial({ color: accentColor, roughness: 0.55 })
+    );
+    scarf.position.set(0, 1.72, 0);
+    scarf.rotation.x = Math.PI / 2;
+    npc.add(scarf);
+  }
+
+  // Floating Companion Status Diamond
+  const markerGeo = new THREE.OctahedronGeometry(0.11, 0);
   const markerMat = new THREE.MeshBasicMaterial({ color: accentColor });
   const marker = new THREE.Mesh(markerGeo, markerMat);
-  marker.position.y = 2.4;
-  marker.rotation.x = Math.PI;
+  marker.position.y = 2.38;
   npc.add(marker);
 
   setupGroupShadows(npc, true, true);
@@ -613,31 +1004,27 @@ export function createStructureMesh(
   const holoMat = isValid ? gameMaterials.hologramValid : gameMaterials.hologramInvalid;
 
   if (type === 'foundation_wood') {
-    // Timber Foundation Deck (3x3 units)
     const deckGeo = new THREE.BoxGeometry(3.0, 0.25, 3.0);
     const deck = new THREE.Mesh(deckGeo, isHologram ? holoMat : gameMaterials.woodPlanks);
     deck.position.y = 0.125;
     group.add(deck);
 
-    // 4 Corner Foundation Posts
-    for (let x of [-1.4, 1.4]) {
-      for (let z of [-1.4, 1.4]) {
-        const postGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.5, 6);
+    for (const x of [-1.4, 1.4]) {
+      for (const z of [-1.4, 1.4]) {
+        const postGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.5, 12);
         const post = new THREE.Mesh(postGeo, isHologram ? holoMat : gameMaterials.woodBark);
         post.position.set(x, 0.25, z);
         group.add(post);
       }
     }
   } else if (type === 'wall_log') {
-    // Fortified Log Wall (3.0 wide, 2.5 high)
     const wallGeo = new THREE.BoxGeometry(3.0, 2.5, 0.3);
     const wall = new THREE.Mesh(wallGeo, isHologram ? holoMat : gameMaterials.woodBark);
     wall.position.y = 1.25;
     group.add(wall);
 
-    // 2 Iron reinforcement strapping bands
     if (!isHologram) {
-      for (let y of [0.7, 1.8]) {
+      for (const y of [0.7, 1.8]) {
         const bandGeo = new THREE.BoxGeometry(3.05, 0.1, 0.34);
         const band = new THREE.Mesh(bandGeo, gameMaterials.ironBand);
         band.position.y = y;
@@ -645,7 +1032,6 @@ export function createStructureMesh(
       }
     }
   } else if (type === 'door_wood') {
-    // Doorway Frame
     const frameLeft = new THREE.Mesh(
       new THREE.BoxGeometry(0.3, 2.5, 0.3),
       isHologram ? holoMat : gameMaterials.woodBark
@@ -667,31 +1053,28 @@ export function createStructureMesh(
     frameTop.position.set(0, 2.35, 0);
     group.add(frameTop);
 
-    // Door Panel
     const doorGeo = new THREE.BoxGeometry(1.8, 2.2, 0.15);
     const door = new THREE.Mesh(doorGeo, isHologram ? holoMat : gameMaterials.woodPlanks);
     door.position.set(0, 1.1, 0);
     group.add(door);
 
     if (!isHologram) {
-      const ringGeo = new THREE.TorusGeometry(0.08, 0.02, 6, 8);
+      const ringGeo = new THREE.TorusGeometry(0.08, 0.02, 8, 16);
       const ring = new THREE.Mesh(ringGeo, gameMaterials.ironBand);
       ring.position.set(0.65, 1.1, 0.1);
       group.add(ring);
     }
   } else if (type === 'campfire') {
-    // Hearth Campfire (Stone ring + Charred logs + Embers + Light)
     for (let i = 0; i < 8; i++) {
       const angle = (i * Math.PI * 2) / 8;
-      const stoneGeo = new THREE.DodecahedronGeometry(0.22, 0);
+      const stoneGeo = new THREE.DodecahedronGeometry(0.22, 1);
       const stone = new THREE.Mesh(stoneGeo, isHologram ? holoMat : gameMaterials.firePitStones);
       stone.position.set(Math.cos(angle) * 0.75, 0.15, Math.sin(angle) * 0.75);
       group.add(stone);
     }
 
-    // Crossed logs
     for (let i = 0; i < 3; i++) {
-      const logGeo = new THREE.CylinderGeometry(0.08, 0.08, 1.1, 5);
+      const logGeo = new THREE.CylinderGeometry(0.08, 0.08, 1.1, 10);
       const log = new THREE.Mesh(logGeo, isHologram ? holoMat : gameMaterials.woodBark);
       log.position.y = 0.2;
       log.rotation.x = Math.PI / 2;
@@ -699,8 +1082,7 @@ export function createStructureMesh(
       group.add(log);
     }
 
-    // Glowing ember center
-    const emberGeo = new THREE.SphereGeometry(0.3, 6, 6);
+    const emberGeo = new THREE.SphereGeometry(0.3, 12, 12);
     const ember = new THREE.Mesh(emberGeo, isHologram ? holoMat : gameMaterials.emberGlow);
     ember.position.y = 0.25;
     group.add(ember);
@@ -708,19 +1090,17 @@ export function createStructureMesh(
     if (!isHologram) {
       const fireLight = new THREE.PointLight(0xff6611, 2.5, 14);
       fireLight.position.set(0, 0.7, 0);
-      fireLight.castShadow = true;
+      fireLight.castShadow = !isSoftwareGl;
       group.add(fireLight);
     }
   } else if (type === 'workbench') {
-    // Master Crafting Workbench
     const topGeo = new THREE.BoxGeometry(2.0, 0.15, 1.0);
     const top = new THREE.Mesh(topGeo, isHologram ? holoMat : gameMaterials.woodPlanks);
     top.position.y = 0.9;
     group.add(top);
 
-    // 4 legs
-    for (let x of [-0.85, 0.85]) {
-      for (let z of [-0.35, 0.35]) {
+    for (const x of [-0.85, 0.85]) {
+      for (const z of [-0.35, 0.35]) {
         const legGeo = new THREE.BoxGeometry(0.15, 0.9, 0.15);
         const leg = new THREE.Mesh(legGeo, isHologram ? holoMat : gameMaterials.woodBark);
         leg.position.set(x, 0.45, z);
@@ -729,20 +1109,17 @@ export function createStructureMesh(
     }
 
     if (!isHologram) {
-      // Mini Anvil
       const anvilGeo = new THREE.BoxGeometry(0.4, 0.25, 0.2);
       const anvil = new THREE.Mesh(anvilGeo, gameMaterials.refinedSteel);
       anvil.position.set(-0.5, 1.1, 0);
       group.add(anvil);
 
-      // Tool rack backboard
       const backGeo = new THREE.BoxGeometry(2.0, 0.6, 0.08);
       const back = new THREE.Mesh(backGeo, gameMaterials.woodBark);
       back.position.set(0, 1.25, -0.45);
       group.add(back);
     }
   } else if (type === 'storage_crate') {
-    // Wooden Storage Chest
     const boxGeo = new THREE.BoxGeometry(1.2, 0.8, 0.8);
     const box = new THREE.Mesh(boxGeo, isHologram ? holoMat : gameMaterials.woodPlanks);
     box.position.y = 0.4;
@@ -755,22 +1132,20 @@ export function createStructureMesh(
       group.add(lock);
     }
   } else if (type === 'water_collector') {
-    // Rain barrel & funnel
-    const barrelGeo = new THREE.CylinderGeometry(0.5, 0.55, 1.2, 8);
+    const barrelGeo = new THREE.CylinderGeometry(0.5, 0.55, 1.2, 16);
     const barrel = new THREE.Mesh(barrelGeo, isHologram ? holoMat : gameMaterials.woodBark);
     barrel.position.y = 0.6;
     group.add(barrel);
 
-    const funnelGeo = new THREE.ConeGeometry(0.8, 0.5, 8);
+    const funnelGeo = new THREE.ConeGeometry(0.8, 0.5, 16);
     const funnel = new THREE.Mesh(funnelGeo, isHologram ? holoMat : gameMaterials.ironBand);
     funnel.position.y = 1.45;
     funnel.rotation.x = Math.PI;
     group.add(funnel);
   } else if (type === 'watchtower') {
-    // Elevated Stilt Platform
-    for (let x of [-1.2, 1.2]) {
-      for (let z of [-1.2, 1.2]) {
-        const stiltGeo = new THREE.CylinderGeometry(0.15, 0.18, 5.0, 6);
+    for (const x of [-1.2, 1.2]) {
+      for (const z of [-1.2, 1.2]) {
+        const stiltGeo = new THREE.CylinderGeometry(0.15, 0.18, 5.0, 12);
         const stilt = new THREE.Mesh(stiltGeo, isHologram ? holoMat : gameMaterials.woodBark);
         stilt.position.set(x, 2.5, z);
         group.add(stilt);
@@ -781,7 +1156,6 @@ export function createStructureMesh(
     plat.position.y = 5.0;
     group.add(plat);
   } else {
-    // cot_bedroll
     const bedGeo = new THREE.BoxGeometry(1.2, 0.3, 2.2);
     const bed = new THREE.Mesh(bedGeo, isHologram ? holoMat : gameMaterials.tentCanvas);
     bed.position.y = 0.15;
